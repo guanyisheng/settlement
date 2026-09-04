@@ -1,0 +1,10 @@
+.DS_Store
+*.log
+.env
+*.zip
+config/database.php
+config/cos.php
+uploads/*
+!uploads/.gitkeep
+!uploads/orders/.gitkeep
+!uploads/staff/.gitkeep
