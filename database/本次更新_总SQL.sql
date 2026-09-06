@@ -156,6 +156,7 @@ CALL qz_add_column_if_missing('users', 'examiner', "VARCHAR(100) DEFAULT NULL CO
 CALL qz_add_column_if_missing('users', 'deposit', "VARCHAR(50) DEFAULT NULL COMMENT '押金' AFTER examiner");
 CALL qz_add_column_if_missing('users', 'photo_uploaded', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否上传毛照' AFTER deposit");
 CALL qz_add_column_if_missing('users', 'photo_key', "VARCHAR(255) DEFAULT NULL COMMENT '毛照存储Key' AFTER photo_uploaded");
+CALL qz_add_column_if_missing('users', 'pay_qr_key', "VARCHAR(512) DEFAULT NULL COMMENT '收款转账二维码存储Key' AFTER photo_key");
 CALL qz_add_column_if_missing('users', 'deleted_at', 'DATETIME DEFAULT NULL AFTER updated_at');
 
 CALL qz_add_column_if_missing('customers', 'balance', "DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '预存余额' AFTER remark");

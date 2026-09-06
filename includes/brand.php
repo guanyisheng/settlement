@@ -39,3 +39,10 @@ function brandTitle(string $page = ''): string
     }
     return $page . ' - ' . $name;
 }
+
+/** 系统版本号（可在后台系统设置修改） */
+function appVersion(): string
+{
+    $v = trim(SettingsService::get('app_version', '1.2.0'));
+    return $v !== '' ? $v : '1.2.0';
+}

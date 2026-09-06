@@ -18,9 +18,17 @@ $key = null;
 $photoId = (int) ($_GET['photo_id'] ?? 0);
 $honorImageId = (int) ($_GET['honor_image_id'] ?? 0);
 $staffId = (int) ($_GET['id'] ?? 0);
+$wantPayQr = !empty($_GET['pay_qr']);
 
 try {
-    if ($photoId > 0) {
+    if ($wantPayQr && $staffId > 0) {
+        $staff = UserService::getStaffById($pdo, $staffId);
+        if (!$staff || empty($staff['pay_qr_key'])) {
+            http_response_code(404);
+            exit('收款码不存在');
+        }
+        $key = $staff['pay_qr_key'];
+    } elseif ($photoId > 0) {
         $photo = StaffPhotoService::getById($pdo, $photoId);
         if (!$photo) {
             http_response_code(404);

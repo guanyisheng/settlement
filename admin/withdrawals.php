@@ -133,6 +133,19 @@ require __DIR__ . '/partials/header.php';
                 <dt>已放款提现</dt><dd><?= formatMoney($staffBalance['paid_withdrawals']) ?></dd>
                 <dt>申请时间</dt><dd><?= formatDateTime($viewWithdrawal['created_at']) ?></dd>
                 <dt>状态</dt><dd><?= withdrawalStatusLabel($viewWithdrawal['status']) ?></dd>
+                <dt>收款二维码</dt>
+                <dd>
+                    <?php if (!empty($viewWithdrawal['staff_pay_qr_key'])): ?>
+                        <a href="/admin/staff_photo.php?pay_qr=1&id=<?= (int) $viewWithdrawal['staff_id'] ?>" target="_blank">
+                            <img src="/admin/staff_photo.php?pay_qr=1&id=<?= (int) $viewWithdrawal['staff_id'] ?>"
+                                 alt="收款码"
+                                 style="max-width:220px;width:100%;border-radius:8px;border:1px solid var(--border);background:#fff;display:block;margin-top:6px">
+                        </a>
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px">扫码转账给打手后，再点「确认已放款」</p>
+                    <?php else: ?>
+                        <span style="color:var(--text-muted)">该打手尚未上传收款码，可让其在打手端「资料」里上传</span>
+                    <?php endif; ?>
+                </dd>
                 <?php if ($viewWithdrawal['processed_at']): ?>
                 <dt>处理人</dt><dd><?= e($viewWithdrawal['processor_name'] ?? '-') ?></dd>
                 <dt>处理时间</dt><dd><?= formatDateTime($viewWithdrawal['processed_at']) ?></dd>
