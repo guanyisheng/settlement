@@ -11,16 +11,12 @@ $currentPage = $currentPage ?? '';
         <?= svgIcon('report') ?>
         <span>报单</span>
     </a>
-    <a href="/staff/photos.php" class="nav-link <?= $currentPage === 'photos' ? 'active' : '' ?>">
-        <?= svgIcon('staff') ?>
-        <span>毛照</span>
-    </a>
-    <a href="/staff/honors.php" class="nav-link <?= $currentPage === 'honors' ? 'active' : '' ?>">
-        <?= svgIcon('registrations') ?>
-        <span>荣誉</span>
-    </a>
     <a href="/staff/withdrawals.php" class="nav-link <?= $currentPage === 'withdrawals' ? 'active' : '' ?>">
         <?= svgIcon('withdrawals') ?>
         <span>提现</span>
+    </a>
+    <a href="/staff/profile.php" class="nav-link <?= $currentPage === 'profile' || $currentPage === 'account' ? 'active' : '' ?>">
+        <?= svgIcon('staff') ?>
+        <span>我的</span>
     </a>
 </nav>
