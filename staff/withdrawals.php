@@ -16,6 +16,8 @@ $pdo = Database::getConnection();
 $staffId = Auth::id();
 $balance = BalanceService::getBalanceSummary($pdo, $staffId);
 $withdrawals = WithdrawalService::getByStaff($pdo, $staffId);
+$appliedToday = WithdrawalService::hasAppliedToday($pdo, $staffId);
+$canWithdraw = $balance['available_balance'] > 0 && !$appliedToday;
 
 $error = '';
 $success = flash('success');
@@ -32,6 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 $balance = BalanceService::getBalanceSummary($pdo, $staffId);
+$appliedToday = WithdrawalService::hasAppliedToday($pdo, $staffId);
+$canWithdraw = $balance['available_balance'] > 0 && !$appliedToday;
 $currentPage = 'withdrawals';
 $pageTitle = brandTitle('提现记录');
 $bodyClass = 'has-nav';
@@ -43,7 +47,7 @@ require __DIR__ . '/partials/head.php';
         <div class="top-bar-inner">
             <div class="top-bar-info">
                 <h1>提现记录</h1>
-                <p class="subtitle">申请记录与状态</p>
+                <p class="subtitle">每天仅可申请 1 次</p>
             </div>
             <?php require __DIR__ . '/partials/user-chip.php'; ?>
         </div>
@@ -75,6 +79,9 @@ require __DIR__ . '/partials/head.php';
         <?php endif; ?>
 
         <div class="section-title">提现申请</div>
+        <?php if ($appliedToday): ?>
+            <div class="alert alert-success" style="margin-bottom:12px">今天已申请过提现，每天只能申请一次，请明天再试。</div>
+        <?php endif; ?>
 
         <?php if (empty($withdrawals)): ?>
             <div class="empty-state">
@@ -82,7 +89,7 @@ require __DIR__ . '/partials/head.php';
                     <?= svgIcon('empty-withdrawals', 'empty-icon-svg') ?>
                 </div>
                 <p>暂无提现记录</p>
-                <?php if ($balance['available_balance'] > 0): ?>
+                <?php if ($canWithdraw): ?>
                     <a href="#" class="btn btn-primary" id="openWithdrawEmpty">申请提现</a>
                 <?php endif; ?>
             </div>
@@ -106,7 +113,7 @@ require __DIR__ . '/partials/head.php';
         <?php endif; ?>
     </main>
 
-    <?php if ($balance['available_balance'] > 0): ?>
+    <?php if ($canWithdraw): ?>
     <a href="#" class="fab-btn" id="openWithdraw" aria-label="申请提现">+</a>
     <?php endif; ?>
 
@@ -117,6 +124,7 @@ require __DIR__ . '/partials/head.php';
             <p class="modal-balance-hint">
                 可提现余额：<strong><?= formatMoney($balance['available_balance']) ?></strong>
             </p>
+            <p class="order-no-hint" style="margin:0 0 12px">每天只能申请 1 次，请确认金额后再提交</p>
             <form method="post">
                 <input type="hidden" name="action" value="withdraw">
                 <div class="form-group">
