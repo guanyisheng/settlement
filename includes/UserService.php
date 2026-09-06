@@ -12,10 +12,19 @@ class UserService
 
     public static function getStaffList(PDO $pdo): array
     {
-        $stmt = $pdo->query(
-            "SELECT * FROM users WHERE role = 'STAFF' AND status != " . Auth::STATUS_PENDING . " ORDER BY created_at DESC"
-        );
-        return $stmt->fetchAll();
+        try {
+            $stmt = $pdo->query(
+                "SELECT * FROM users WHERE role = 'STAFF' AND status != " . Auth::STATUS_PENDING . "
+                 AND deleted_at IS NULL
+                 ORDER BY created_at DESC"
+            );
+            return $stmt->fetchAll();
+        } catch (PDOException) {
+            $stmt = $pdo->query(
+                "SELECT * FROM users WHERE role = 'STAFF' AND status != " . Auth::STATUS_PENDING . " ORDER BY created_at DESC"
+            );
+            return $stmt->fetchAll();
+        }
     }
 
     public static function getPendingRegistrations(PDO $pdo): array
@@ -48,6 +57,13 @@ class UserService
             if ($stmt->rowCount() === 0) {
                 throw new RuntimeException('审核失败，请刷新后重试');
             }
+
+            require_once __DIR__ . '/RoleService.php';
+            require_once __DIR__ . '/PermissionService.php';
+            if (PermissionService::isRbacReady($pdo)) {
+                RoleService::ensureUserHasLegacyRole($pdo, $id, 'STAFF');
+            }
+
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -57,18 +73,77 @@ class UserService
 
     public static function rejectRegistration(PDO $pdo, int $id, string $reason = ''): void
     {
+        // 打回 = 直接删除账号（待审核无历史单，可物理删除）
+        self::purgeUser($pdo, $id, true);
+    }
+
+    /**
+     * 物理删除用户及相关附属数据。
+     * @param bool $pendingOnly 仅允许删除待审核打手
+     */
+    public static function purgeUser(PDO $pdo, int $id, bool $pendingOnly = false): void
+    {
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'STAFF' AND status = ? FOR UPDATE");
-            $stmt->execute([$id, Auth::STATUS_PENDING]);
-            if (!$stmt->fetch()) {
-                throw new RuntimeException('注册申请不存在或已处理');
+            $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? FOR UPDATE');
+            $stmt->execute([$id]);
+            $user = $stmt->fetch();
+            if (!$user) {
+                throw new RuntimeException('用户不存在');
             }
-            $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE id = ? AND role = 'STAFF' AND status = ?");
-            $stmt->execute([Auth::STATUS_DISABLED, $id, Auth::STATUS_PENDING]);
-            if ($stmt->rowCount() === 0) {
-                throw new RuntimeException('拒绝失败，请刷新后重试');
+            if ($pendingOnly) {
+                if ($user['role'] !== 'STAFF' || (int) $user['status'] !== Auth::STATUS_PENDING) {
+                    throw new RuntimeException('只能打回待审核的注册申请');
+                }
             }
+
+            // 有正式订单/提现时不能硬删（外键），改为隐藏并释放用户名
+            $cntStmt = $pdo->prepare('SELECT COUNT(*) FROM orders WHERE staff_id = ?');
+            $cntStmt->execute([$id]);
+            $orderCnt = (int) $cntStmt->fetchColumn();
+            $wStmt = $pdo->prepare('SELECT COUNT(*) FROM withdrawals WHERE staff_id = ?');
+            $wStmt->execute([$id]);
+            $wCnt = (int) $wStmt->fetchColumn();
+
+            if ($orderCnt > 0 || $wCnt > 0) {
+                $newName = 'deleted_' . $id . '_' . substr(bin2hex(random_bytes(4)), 0, 8);
+                try {
+                    $pdo->prepare(
+                        'UPDATE users SET status = 0, deleted_at = NOW(), username = ?, nickname = CONCAT(nickname, "(已删)") WHERE id = ?'
+                    )->execute([$newName, $id]);
+                } catch (PDOException) {
+                    $pdo->prepare('UPDATE users SET status = 0, username = ?, nickname = CONCAT(IFNULL(nickname,""), "(已删)") WHERE id = ?')
+                        ->execute([$newName, $id]);
+                }
+            } else {
+                try {
+                    $pdo->prepare('DELETE FROM staff_honor_images WHERE honor_id IN (SELECT id FROM staff_honors WHERE staff_id = ?)')->execute([$id]);
+                } catch (PDOException) {
+                }
+                try {
+                    $pdo->prepare('DELETE FROM staff_honors WHERE staff_id = ?')->execute([$id]);
+                } catch (PDOException) {
+                }
+                try {
+                    $pdo->prepare('DELETE FROM staff_photos WHERE staff_id = ?')->execute([$id]);
+                } catch (PDOException) {
+                }
+                try {
+                    $pdo->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$id]);
+                } catch (PDOException) {
+                }
+                // 若被其他表引用为 reviewed_by 等，先清空
+                try {
+                    $pdo->prepare('UPDATE orders SET reviewed_by = NULL WHERE reviewed_by = ?')->execute([$id]);
+                } catch (PDOException) {
+                }
+                try {
+                    $pdo->prepare('UPDATE withdrawals SET processed_by = NULL WHERE processed_by = ?')->execute([$id]);
+                } catch (PDOException) {
+                }
+                $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$id]);
+            }
+
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -92,7 +167,7 @@ class UserService
         return $id;
     }
 
-    /** 打手自助注册（公开接口，固定 STAFF 角色） */
+    /** 打手自助注册（公开接口，固定 STAFF 角色；毛照选填） */
     public static function registerStaff(PDO $pdo, array $data, ?array $photoFile = null): int
     {
         $username = trim($data['username'] ?? '');
@@ -100,7 +175,10 @@ class UserService
         $confirm = $data['password_confirm'] ?? '';
 
         if (!preg_match('/^[a-zA-Z0-9_]{3,50}$/', $username)) {
-            throw new InvalidArgumentException('用户名需为3-50位字母、数字或下划线');
+            throw new InvalidArgumentException('用户名需为3-50位字母、数字或下划线（不要用中文）');
+        }
+        if (strlen($password) < 6) {
+            throw new InvalidArgumentException('密码至少6位');
         }
         if ($password !== $confirm) {
             throw new InvalidArgumentException('两次输入的密码不一致');
@@ -112,17 +190,31 @@ class UserService
             'nickname' => trim($data['nickname'] ?? ''),
         ], 'STAFF', Auth::STATUS_PENDING);
 
-        if ($photoFile !== null && ($photoFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-            require_once __DIR__ . '/StaffPhotoService.php';
-            require_once __DIR__ . '/PermissionService.php';
-            if (PermissionService::isRbacReady($pdo)) {
-                try {
-                    StaffPhotoService::uploadMany($pdo, $id, $id, $photoFile, $username);
-                } catch (Throwable) {
-                    self::saveStaffPhoto($pdo, $id, $username, $photoFile);
+        // 毛照选填：有实际上传文件才处理；上传失败不阻断注册
+        $files = normalizeUploadedFiles($photoFile);
+        if ($files !== []) {
+            try {
+                require_once __DIR__ . '/StaffPhotoService.php';
+                require_once __DIR__ . '/PermissionService.php';
+                if (PermissionService::isRbacReady($pdo)) {
+                    try {
+                        StaffPhotoService::uploadMany($pdo, $id, $id, $photoFile, $username);
+                    } catch (Throwable $e) {
+                        // staff_photos 表可能未建：回退单张旧逻辑
+                        if (count($files) === 1) {
+                            self::saveStaffPhoto($pdo, $id, $username, $files[0]);
+                        } else {
+                            foreach ($files as $f) {
+                                self::saveStaffPhoto($pdo, $id, $username, $f);
+                            }
+                        }
+                    }
+                } else {
+                    self::saveStaffPhoto($pdo, $id, $username, $files[0]);
                 }
-            } else {
-                self::saveStaffPhoto($pdo, $id, $username, $photoFile);
+            } catch (Throwable $e) {
+                // 账号已创建，毛照失败只记日志不回滚，避免「选了图却注册失败」或 COS 故障导致无法注册
+                error_log('[registerStaff] photo upload failed for user #' . $id . ': ' . $e->getMessage());
             }
         }
 
@@ -135,6 +227,28 @@ class UserService
         $stmt->execute([$username]);
         $row = $stmt->fetch();
         return $row ?: null;
+    }
+
+    /**
+     * 注册前检测用户名是否可用（格式 + 是否已被占用）
+     * @return array{available:bool,message:string}
+     */
+    public static function checkUsername(string $username): array
+    {
+        $username = trim($username);
+        if ($username === '') {
+            return ['available' => false, 'message' => '请输入用户名'];
+        }
+        if (!preg_match('/^[a-zA-Z0-9_]{3,50}$/', $username)) {
+            return ['available' => false, 'message' => '须为 3–50 位英文、数字或下划线，不能用中文'];
+        }
+
+        $pdo = Database::getConnection();
+        if (self::getByUsername($pdo, $username)) {
+            return ['available' => false, 'message' => '用户名已存在，请换一个'];
+        }
+
+        return ['available' => true, 'message' => '用户名可用'];
     }
 
     public static function getById(PDO $pdo, int $id): ?array
@@ -190,7 +304,18 @@ class UserService
 
     public static function deleteStaff(PDO $pdo, int $id): void
     {
-        self::deleteUser($pdo, $id, 'STAFF');
+        // 禁用/删除：尽量物理删除；有历史单则隐藏
+        self::purgeUser($pdo, $id, false);
+    }
+
+    private static function deleteUser(PDO $pdo, int $id, string $role): void
+    {
+        $stmt = $pdo->prepare('SELECT id FROM users WHERE id = ? AND role = ?');
+        $stmt->execute([$id, $role]);
+        if (!$stmt->fetch()) {
+            throw new RuntimeException('用户不存在或无法删除');
+        }
+        self::purgeUser($pdo, $id, false);
     }
 
     // ─── 员工（客服） ───────────────────────────────────
@@ -343,15 +468,15 @@ class UserService
         return array_merge($balance, ['order_count' => $orderCount]);
     }
 
-    /** 保存打手毛照 */
+    /** 保存打手毛照（单张，兼容旧调用） */
     public static function saveStaffPhoto(PDO $pdo, int $staffId, string $username, array $photoFile): void
     {
-        require_once __DIR__ . '/StaffPhotoStorage.php';
-        $storage = new StaffPhotoStorage();
-        $photoKey = $storage->uploadPhoto($photoFile, $username);
-
-        $stmt = $pdo->prepare("UPDATE users SET photo_key = ?, photo_uploaded = 1 WHERE id = ? AND role = 'STAFF'");
-        $stmt->execute([$photoKey, $staffId]);
+        require_once __DIR__ . '/StaffPhotoService.php';
+        $normalized = normalizeUploadedFiles($photoFile);
+        if ($normalized === []) {
+            return;
+        }
+        StaffPhotoService::uploadMany($pdo, $staffId, (int) (Auth::id() ?: $staffId), $photoFile, $username);
     }
 
     private static function updateStaffProfile(PDO $pdo, int $id, array $data, ?array $photoFile, string $username): void
@@ -368,8 +493,16 @@ class UserService
         );
         $stmt->execute([$hiredAt, $examiner, $deposit, $id]);
 
-        if ($photoFile !== null && ($photoFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-            self::saveStaffPhoto($pdo, $id, $username, $photoFile);
+        $files = normalizeUploadedFiles($photoFile);
+        if ($files !== []) {
+            require_once __DIR__ . '/StaffPhotoService.php';
+            StaffPhotoService::uploadMany(
+                $pdo,
+                $id,
+                (int) (Auth::id() ?: $id),
+                $photoFile ?? [],
+                $username
+            );
         }
     }
 
@@ -428,15 +561,5 @@ class UserService
         }
         $stmt = $pdo->prepare('UPDATE users SET password = ? WHERE id = ? AND role = ?');
         $stmt->execute([password_hash($password, PASSWORD_DEFAULT), $id, $role]);
-    }
-
-    private static function deleteUser(PDO $pdo, int $id, string $role): void
-    {
-        // 禁用账号（保留历史订单关联）
-        $stmt = $pdo->prepare('UPDATE users SET status = 0 WHERE id = ? AND role = ?');
-        $stmt->execute([$id, $role]);
-        if ($stmt->rowCount() === 0) {
-            throw new RuntimeException('用户不存在或无法删除');
-        }
     }
 }
