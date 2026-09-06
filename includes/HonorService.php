@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/StaffPhotoStorage.php';
+require_once __DIR__ . '/UploadLimits.php';
 require_once __DIR__ . '/helpers.php';
 
 class HonorService
@@ -63,9 +64,10 @@ class HonorService
         if ($uploaded === []) {
             throw new InvalidArgumentException('请至少上传一张荣誉图片');
         }
-        if (count($uploaded) > 9) {
-            throw new InvalidArgumentException('最多上传9张图片');
+        if (count($uploaded) > 20) {
+            throw new InvalidArgumentException('一次最多选择 20 张图片');
         }
+        UploadLimits::assertBatchSize($uploaded);
 
         $pdo->beginTransaction();
         try {

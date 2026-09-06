@@ -55,10 +55,10 @@ class CosService
         return $keys;
     }
 
-    /** 上传图片到指定 COS Key */
-    public function uploadRawImage(array $file, string $key): string
+    /** 上传图片到指定 COS Key；$maxBytes 默认订单截图 5MB，毛照/荣誉可传入更大限制 */
+    public function uploadRawImage(array $file, string $key, ?int $maxBytes = null): string
     {
-        $this->validateScreenshotFile($file);
+        $this->validateImageFile($file, $maxBytes ?? self::MAX_SIZE);
         $mime = $this->detectMime($file['tmp_name']);
         $this->putObject($key, (string) file_get_contents($file['tmp_name']), $mime);
         return $key;
@@ -66,19 +66,25 @@ class CosService
 
     private function validateScreenshotFile(array $file): void
     {
+        $this->validateImageFile($file, self::MAX_SIZE, '截图');
+    }
+
+    private function validateImageFile(array $file, int $maxBytes, string $label = '图片'): void
+    {
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-            throw new InvalidArgumentException('请上传订单截图');
+            throw new InvalidArgumentException('请上传' . $label);
         }
         if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-            throw new InvalidArgumentException('截图上传失败，请重试');
+            throw new InvalidArgumentException($label . '上传失败，请重试');
         }
-        if (($file['size'] ?? 0) > self::MAX_SIZE) {
-            throw new InvalidArgumentException('每张截图大小不能超过5MB');
+        if (($file['size'] ?? 0) > $maxBytes) {
+            $mb = max(1, (int) round($maxBytes / 1024 / 1024));
+            throw new InvalidArgumentException('单张' . $label . '不能超过' . $mb . 'MB');
         }
 
         $mime = $this->detectMime($file['tmp_name']);
         if (!isset(self::ALLOWED_TYPES[$mime])) {
-            throw new InvalidArgumentException('仅支持 JPG、PNG、WEBP 格式截图');
+            throw new InvalidArgumentException('仅支持 JPG、PNG、WEBP 格式');
         }
     }
 

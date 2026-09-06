@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/StaffPhotoStorage.php';
+require_once __DIR__ . '/UploadLimits.php';
 require_once __DIR__ . '/helpers.php';
 
 class StaffPhotoService
@@ -33,9 +34,10 @@ class StaffPhotoService
         if ($uploaded === []) {
             throw new InvalidArgumentException('请选择要上传的毛照');
         }
-        if (count($uploaded) > 9) {
-            throw new InvalidArgumentException('一次最多上传9张');
+        if (count($uploaded) > 20) {
+            throw new InvalidArgumentException('一次最多选择 20 张图片');
         }
+        UploadLimits::assertBatchSize($uploaded);
 
         $storage = new StaffPhotoStorage();
         $ids = [];
@@ -49,7 +51,6 @@ class StaffPhotoService
             $ids[] = (int) $pdo->lastInsertId();
         }
 
-        // 兼容旧字段：更新最新一张到 users.photo_key
         $latest = self::listByStaff($pdo, $staffId);
         if ($latest !== []) {
             $pdo->prepare('UPDATE users SET photo_key = ?, photo_uploaded = 1 WHERE id = ?')

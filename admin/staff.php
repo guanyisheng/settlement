@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/Auth.php';
 require_once __DIR__ . '/../includes/Database.php';
 require_once __DIR__ . '/../includes/UserService.php';
 require_once __DIR__ . '/../includes/BalanceService.php';
+require_once __DIR__ . '/../includes/UploadLimits.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 Auth::requirePage('staff');
@@ -18,17 +19,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     try {
         if ($action === 'create') {
-            UserService::createStaff($pdo, $_POST, $_FILES['photo'] ?? null);
+            UserService::createStaff($pdo, $_POST, $_FILES['photos'] ?? $_FILES['photo'] ?? null);
             flash('success', '打手添加成功');
         } elseif ($action === 'update') {
-            UserService::updateStaff($pdo, (int) $_POST['id'], $_POST, $_FILES['photo'] ?? null);
+            UserService::updateStaff($pdo, (int) $_POST['id'], $_POST, $_FILES['photos'] ?? $_FILES['photo'] ?? null);
             flash('success', '打手信息已更新');
         } elseif ($action === 'reset_password') {
             UserService::resetStaffPassword($pdo, (int) $_POST['id'], $_POST['password'] ?? '');
             flash('success', '密码已重置');
         } elseif ($action === 'delete') {
             UserService::deleteStaff($pdo, (int) $_POST['id']);
-            flash('success', '打手已禁用');
+            flash('success', '打手已删除（无历史单则彻底删除；有订单则隐藏账号并释放用户名）');
         }
         redirect('/admin/staff.php');
     } catch (Throwable $e) {
@@ -80,8 +81,10 @@ require __DIR__ . '/partials/header.php';
                     <input type="text" name="deposit" class="form-control" placeholder="如 100">
                 </div>
                 <div class="form-group">
-                    <label>毛照</label>
-                    <input type="file" name="photo" class="form-control" accept="image/jpeg,image/png,image/webp">
+                    <label>毛照（可多选）</label>
+                    <input type="file" name="photos[]" class="form-control" multiple
+                           accept="image/jpeg,image/png,image/webp">
+                    <p style="font-size:12px;color:var(--text-muted);margin-top:6px"><?= e(UploadLimits::hint()) ?></p>
                 </div>
                 <div class="form-group" style="display:flex;align-items:flex-end">
                     <button type="submit" class="btn btn-primary">添加</button>
@@ -127,10 +130,10 @@ require __DIR__ . '/partials/header.php';
                             <a href="/admin/staff_detail.php?id=<?= $s['id'] ?>" class="btn btn-sm">详情</a>
                             <button type="button" class="btn btn-sm" onclick="editStaff(<?= htmlspecialchars(json_encode($s), ENT_QUOTES) ?>)">编辑</button>
                             <?php if ($s['status']): ?>
-                            <form method="post" style="display:inline" onsubmit="return confirm('确认禁用该打手？')">
+                            <form method="post" style="display:inline" onsubmit="return confirm('确认删除该打手？无订单会彻底删除；有历史订单会隐藏账号。')">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $s['id'] ?>">
-                                <button type="submit" class="btn btn-sm btn-danger">禁用</button>
+                                <button type="submit" class="btn btn-sm btn-danger">删除</button>
                             </form>
                             <?php endif; ?>
                         </td>

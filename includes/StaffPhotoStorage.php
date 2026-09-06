@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/CosService.php';
 require_once __DIR__ . '/SettingsService.php';
+require_once __DIR__ . '/UploadLimits.php';
 
 class StaffPhotoStorage
 {
-    private const MAX_SIZE = 5 * 1024 * 1024;
     private const ALLOWED = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
 
     private array $storageConfig;
@@ -62,7 +62,7 @@ class StaffPhotoStorage
         $target = $dir . '/' . $filename;
 
         if (!move_uploaded_file($file['tmp_name'], $target)) {
-            throw new RuntimeException('毛照保存失败，请检查 uploads/staff 目录权限');
+            throw new RuntimeException('图片保存失败，请检查 uploads/staff 目录权限');
         }
 
         return 'local:' . date('Y/m/d') . '/' . $filename;
@@ -77,23 +77,27 @@ class StaffPhotoStorage
         $key = $prefix . '/' . date('Y/m/d') . '/'
             . $safe . '_' . date('His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
 
-        return $this->getCos()->uploadRawImage($file, $key);
+        return $this->getCos()->uploadRawImage($file, $key, UploadLimits::FILE_MAX_BYTES);
     }
 
     private function validateFile(array $file): void
     {
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-            throw new InvalidArgumentException('请上传毛照');
+            throw new InvalidArgumentException('请选择图片');
         }
         if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-            throw new InvalidArgumentException('毛照上传失败，请重试');
+            $code = (int) ($file['error'] ?? 0);
+            if ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE) {
+                throw new InvalidArgumentException('文件过大：单次合计请不超过 ' . UploadLimits::BATCH_MAX_LABEL);
+            }
+            throw new InvalidArgumentException('图片上传失败，请重试');
         }
-        if (($file['size'] ?? 0) > self::MAX_SIZE) {
-            throw new InvalidArgumentException('毛照大小不能超过5MB');
+        if (($file['size'] ?? 0) > UploadLimits::FILE_MAX_BYTES) {
+            throw new InvalidArgumentException('单张图片不能超过 ' . UploadLimits::FILE_MAX_LABEL);
         }
         $mime = $this->detectMime($file['tmp_name']);
         if (!isset(self::ALLOWED[$mime])) {
-            throw new InvalidArgumentException('毛照仅支持 JPG、PNG、WEBP');
+            throw new InvalidArgumentException('仅支持 JPG、PNG、WEBP');
         }
     }
 
