@@ -164,30 +164,7 @@ class OrderService
             }
 
             require_once __DIR__ . '/SettlementService.php';
-            $rateA = isset($order['rate_a']) && $order['rate_a'] !== null ? (float) $order['rate_a'] : null;
-            $rateB = isset($order['rate_b']) && $order['rate_b'] !== null ? (float) $order['rate_b'] : null;
-
-            if (isset($override['rate_a']) && $override['rate_a'] !== '') {
-                $rateA = (float) $override['rate_a'];
-            } elseif (isset($override['rate_a_pct']) && $override['rate_a_pct'] !== '') {
-                $rateA = (float) $override['rate_a_pct'] / 100;
-            }
-            if (isset($override['rate_b']) && $override['rate_b'] !== '') {
-                $rateB = (float) $override['rate_b'];
-            } elseif (isset($override['rate_b_pct']) && $override['rate_b_pct'] !== '') {
-                $rateB = (float) $override['rate_b_pct'] / 100;
-            }
-
-            if (isset($override['staff_amount']) && $override['staff_amount'] !== '') {
-                $staffAmount = round((float) $override['staff_amount'], 2);
-            } elseif ($order['staff_amount'] !== null && $override === []) {
-                $staffAmount = (float) $order['staff_amount'];
-            } elseif ($order['staff_amount'] !== null && !isset($override['rate_a']) && !isset($override['rate_a_pct'])
-                && !isset($override['rate_b']) && !isset($override['rate_b_pct'])) {
-                $staffAmount = (float) $order['staff_amount'];
-            } else {
-                $staffAmount = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
-            }
+            [$rateA, $rateB, $staffAmount] = self::resolveSettlementOverride($order, $override);
 
             $stmt = $pdo->prepare('SELECT * FROM customers WHERE id = ? FOR UPDATE');
             $stmt->execute([(int) $order['customer_id']]);
@@ -223,6 +200,45 @@ class OrderService
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * 解析本单结算：改倍率默认按公式重算金额；仅勾选「手动金额」时才用填写值。
+     * @return array{0:float,1:float,2:float} [rate_a, rate_b, staff_amount]
+     */
+    public static function resolveSettlementOverride(array $order, array $data): array
+    {
+        require_once __DIR__ . '/SettlementService.php';
+
+        $defaults = SettlementService::rates();
+        $rateA = isset($order['rate_a']) && $order['rate_a'] !== null && $order['rate_a'] !== ''
+            ? (float) $order['rate_a']
+            : (float) $defaults['rate_a'];
+        $rateB = isset($order['rate_b']) && $order['rate_b'] !== null && $order['rate_b'] !== ''
+            ? (float) $order['rate_b']
+            : (float) $defaults['rate_b'];
+
+        if (isset($data['rate_a']) && $data['rate_a'] !== '') {
+            $rateA = (float) $data['rate_a'];
+        } elseif (isset($data['rate_a_pct']) && $data['rate_a_pct'] !== '') {
+            $rateA = (float) $data['rate_a_pct'] / 100;
+        }
+        if (isset($data['rate_b']) && $data['rate_b'] !== '') {
+            $rateB = (float) $data['rate_b'];
+        } elseif (isset($data['rate_b_pct']) && $data['rate_b_pct'] !== '') {
+            $rateB = (float) $data['rate_b_pct'] / 100;
+        }
+
+        $calculated = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
+        $manual = !empty($data['manual_amount']) || !empty($data['settlement_manual']);
+
+        if ($manual && isset($data['staff_amount']) && $data['staff_amount'] !== '') {
+            $staffAmount = round((float) $data['staff_amount'], 2);
+        } else {
+            $staffAmount = $calculated;
+        }
+
+        return [$rateA, $rateB, $staffAmount];
     }
 
     public static function reject(PDO $pdo, int $orderId, int $reviewerId, string $reason): void
@@ -402,22 +418,7 @@ class OrderService
             throw new RuntimeException('仅待审核订单可改结算');
         }
 
-        require_once __DIR__ . '/SettlementService.php';
-        $rateA = isset($order['rate_a']) ? (float) $order['rate_a'] : (float) SettlementService::rates()['rate_a'];
-        $rateB = isset($order['rate_b']) ? (float) $order['rate_b'] : (float) SettlementService::rates()['rate_b'];
-
-        if (isset($data['rate_a_pct']) && $data['rate_a_pct'] !== '') {
-            $rateA = (float) $data['rate_a_pct'] / 100;
-        }
-        if (isset($data['rate_b_pct']) && $data['rate_b_pct'] !== '') {
-            $rateB = (float) $data['rate_b_pct'] / 100;
-        }
-
-        if (isset($data['staff_amount']) && $data['staff_amount'] !== '') {
-            $staffAmount = round((float) $data['staff_amount'], 2);
-        } else {
-            $staffAmount = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
-        }
+        [$rateA, $rateB, $staffAmount] = self::resolveSettlementOverride($order, $data);
 
         try {
             $pdo->prepare('UPDATE orders SET staff_amount = ?, rate_a = ?, rate_b = ? WHERE id = ?')

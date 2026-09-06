@@ -27,9 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('无审核权限');
             }
             OrderService::approve($pdo, $orderId, Auth::id(), [
-                'staff_amount' => $_POST['staff_amount'] ?? '',
-                'rate_a_pct'   => $_POST['rate_a_pct'] ?? '',
-                'rate_b_pct'   => $_POST['rate_b_pct'] ?? '',
+                'staff_amount'  => $_POST['staff_amount'] ?? '',
+                'rate_a_pct'    => $_POST['rate_a_pct'] ?? '',
+                'rate_b_pct'    => $_POST['rate_b_pct'] ?? '',
+                'manual_amount' => $_POST['manual_amount'] ?? '',
             ]);
             flash('success', '订单已通过');
         } elseif ($action === 'reject') {
@@ -245,27 +246,42 @@ require __DIR__ . '/partials/header.php';
             <?php
                 $ra = round(((float) ($viewOrder['rate_a'] ?? $defaultRates['rate_a'])) * 100, 2);
                 $rb = round(((float) ($viewOrder['rate_b'] ?? $defaultRates['rate_b'])) * 100, 2);
-                $sa = $viewOrder['staff_amount'] ?? '';
+                $orderAmount = (float) $viewOrder['amount'];
+                $calcSa = SettlementService::calcStaffAmount(
+                    $orderAmount,
+                    $ra / 100,
+                    $rb / 100
+                );
             ?>
             <hr style="border-color:var(--border);margin:16px 0">
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">默认按业务类型页的倍率；特殊单可改<strong>本单</strong>倍率或直接填结算金额（其它单不受影响）</p>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">
+                改倍率会<strong>自动重算</strong>结算金额。特殊单若要直接定金额，勾选「手动指定」后再填。
+            </p>
             <form method="post" id="settleForm">
                 <input type="hidden" name="order_id" value="<?= (int) $viewOrder['id'] ?>">
                 <div class="form-row">
                     <div class="form-group">
                         <label>基础倍率 %</label>
-                        <input type="number" name="rate_a_pct" class="form-control" step="0.01" min="0" max="100" value="<?= e((string) $ra) ?>">
+                        <input type="number" name="rate_a_pct" id="settleRateA" class="form-control" step="0.01" min="0" max="100" value="<?= e((string) $ra) ?>">
                     </div>
                     <div class="form-group">
                         <label>打手倍率 %</label>
-                        <input type="number" name="rate_b_pct" class="form-control" step="0.01" min="0" max="100" value="<?= e((string) $rb) ?>">
+                        <input type="number" name="rate_b_pct" id="settleRateB" class="form-control" step="0.01" min="0" max="100" value="<?= e((string) $rb) ?>">
                     </div>
                     <div class="form-group">
-                        <label>打手结算金额（可直接填）</label>
-                        <input type="number" name="staff_amount" class="form-control" step="0.01" min="0"
-                               value="<?= e((string) $sa) ?>" placeholder="填了优先生效，适合体验单">
+                        <label>打手结算金额</label>
+                        <input type="number" name="staff_amount" id="settleAmount" class="form-control" step="0.01" min="0"
+                               value="<?= e((string) $calcSa) ?>" readonly
+                               data-order-amount="<?= e((string) $orderAmount) ?>">
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px" id="settleHint">
+                            按倍率自动计算：订单 <?= formatMoney($orderAmount) ?> × 倍率
+                        </p>
                     </div>
                 </div>
+                <label style="display:flex;align-items:center;gap:8px;margin:8px 0 16px;font-size:13px;cursor:pointer">
+                    <input type="checkbox" name="manual_amount" id="manualAmount" value="1">
+                    手动指定结算金额（不按倍率算，适合体验单）
+                </label>
                 <button type="submit" name="action" value="approve" class="btn btn-success"
                         onclick="return confirm('按上方金额/倍率通过此单？')">按此结算通过</button>
                 <button type="submit" name="action" value="update_settlement" class="btn">仅保存结算</button>
@@ -314,6 +330,37 @@ function openReject(id) {
 document.getElementById('detailModal')?.addEventListener('click', e => {
     if (e.target.id === 'detailModal') location.href = '/admin/orders.php?<?= http_build_query(array_diff_key($_GET, ['id' => ''])) ?>';
 });
+
+(function () {
+    const rateA = document.getElementById('settleRateA');
+    const rateB = document.getElementById('settleRateB');
+    const amount = document.getElementById('settleAmount');
+    const manual = document.getElementById('manualAmount');
+    const hint = document.getElementById('settleHint');
+    if (!rateA || !rateB || !amount) return;
+    const orderAmount = parseFloat(amount.dataset.orderAmount || '0') || 0;
+
+    function recalc() {
+        if (manual?.checked) return;
+        const a = (parseFloat(rateA.value) || 0) / 100;
+        const b = (parseFloat(rateB.value) || 0) / 100;
+        const sa = Math.round(orderAmount * a * b * 100) / 100;
+        amount.value = sa.toFixed(2);
+        if (hint) {
+            hint.textContent = '按倍率自动计算：' + orderAmount.toFixed(2) + ' × ' +
+                (a * 100).toFixed(2) + '% × ' + (b * 100).toFixed(2) + '% = ' + sa.toFixed(2);
+        }
+    }
+
+    rateA.addEventListener('input', recalc);
+    rateB.addEventListener('input', recalc);
+    manual?.addEventListener('change', function () {
+        amount.readOnly = !manual.checked;
+        if (!manual.checked) recalc();
+        else if (hint) hint.textContent = '已手动指定，改倍率不会改这个金额';
+    });
+    recalc();
+})();
 </script>
 
 <?php require __DIR__ . '/partials/footer.php'; ?>
