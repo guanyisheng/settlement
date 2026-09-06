@@ -16,15 +16,30 @@ class BalanceService
     /**
      * 累计收入 = 已通过 + 已结算订单的打手结算金额总和
      */
+    private static function notDeletedSql(string $alias = ''): string
+    {
+        $col = $alias !== '' ? "{$alias}.deleted_at" : 'deleted_at';
+        return "({$col} IS NULL)";
+    }
+
     public static function getTotalIncome(PDO $pdo, int $staffId): float
     {
         $expr = self::staffAmountExpr();
-        $stmt = $pdo->prepare(
-            "SELECT COALESCE(SUM({$expr}), 0) AS total
-             FROM orders
-             WHERE staff_id = ? AND status IN ('APPROVED', 'SETTLED')"
-        );
-        $stmt->execute([$staffId]);
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT COALESCE(SUM({$expr}), 0) AS total
+                 FROM orders
+                 WHERE staff_id = ? AND status IN ('APPROVED', 'SETTLED') AND deleted_at IS NULL"
+            );
+            $stmt->execute([$staffId]);
+        } catch (PDOException) {
+            $stmt = $pdo->prepare(
+                "SELECT COALESCE(SUM({$expr}), 0) AS total
+                 FROM orders
+                 WHERE staff_id = ? AND status IN ('APPROVED', 'SETTLED')"
+            );
+            $stmt->execute([$staffId]);
+        }
         return (float) $stmt->fetchColumn();
     }
 

@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', '已通过注册申请');
         } elseif ($action === 'reject') {
             UserService::rejectRegistration($pdo, $id, $_POST['reject_reason'] ?? '');
-            flash('success', '已拒绝注册申请');
+            flash('success', '已打回并删除该注册账号');
         }
         redirect('/admin/registrations.php');
     } catch (Throwable $e) {
@@ -76,10 +76,10 @@ require __DIR__ . '/partials/header.php';
                                 <input type="hidden" name="id" value="<?= $u['id'] ?>">
                                 <button type="submit" class="btn btn-sm btn-success">通过</button>
                             </form>
-                            <form method="post" style="display:inline" onsubmit="return confirm('确认拒绝该注册申请？')">
+                            <form method="post" style="display:inline" onsubmit="return confirm('打回后将直接删除该账号，确定？')">
                                 <input type="hidden" name="action" value="reject">
                                 <input type="hidden" name="id" value="<?= $u['id'] ?>">
-                                <button type="submit" class="btn btn-sm btn-danger">拒绝</button>
+                                <button type="submit" class="btn btn-sm btn-danger">打回删除</button>
                             </form>
                         </td>
                     </tr>

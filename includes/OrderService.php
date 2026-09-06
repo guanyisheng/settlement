@@ -49,10 +49,15 @@ class OrderService
             throw new InvalidArgumentException('微信订单编号过长');
         }
 
-        $stmt = $pdo->prepare('SELECT id FROM orders WHERE wechat_order_no = ? LIMIT 1');
-        $stmt->execute([$wechatOrderNo]);
+        $stmt = $pdo->prepare('SELECT id FROM orders WHERE wechat_order_no = ? AND (deleted_at IS NULL) LIMIT 1');
+        try {
+            $stmt->execute([$wechatOrderNo]);
+        } catch (PDOException) {
+            $stmt = $pdo->prepare('SELECT id FROM orders WHERE wechat_order_no = ? LIMIT 1');
+            $stmt->execute([$wechatOrderNo]);
+        }
         if ($stmt->fetch()) {
-            throw new InvalidArgumentException('该微信订单编号已报备，请勿重复提交');
+            throw new InvalidArgumentException('该微信订单编号已报单，请勿重复提交');
         }
 
         $stmt = $pdo->prepare('SELECT * FROM customers WHERE id = ? AND status = 1');
@@ -75,7 +80,30 @@ class OrderService
         $rates = SettlementService::rates();
         $rateA = (float) $rates['rate_a'];
         $rateB = (float) $rates['rate_b'];
-        $staffAmount = SettlementService::calcStaffAmount($amount, $rateA, $rateB);
+
+        // 本单自定义倍率 / 结算金额（体验单可少抽）
+        if (isset($data['rate_a']) && $data['rate_a'] !== '') {
+            $rateA = (float) $data['rate_a'];
+        } elseif (isset($data['rate_a_pct']) && $data['rate_a_pct'] !== '') {
+            $rateA = (float) $data['rate_a_pct'] / 100;
+        }
+        if (isset($data['rate_b']) && $data['rate_b'] !== '') {
+            $rateB = (float) $data['rate_b'];
+        } elseif (isset($data['rate_b_pct']) && $data['rate_b_pct'] !== '') {
+            $rateB = (float) $data['rate_b_pct'] / 100;
+        }
+        if ($rateA < 0 || $rateA > 1 || $rateB < 0 || $rateB > 1) {
+            throw new InvalidArgumentException('倍率需在 0%～100% 之间');
+        }
+
+        if (isset($data['staff_amount']) && $data['staff_amount'] !== '') {
+            $staffAmount = round((float) $data['staff_amount'], 2);
+            if ($staffAmount < 0) {
+                throw new InvalidArgumentException('打手结算金额不能为负');
+            }
+        } else {
+            $staffAmount = SettlementService::calcStaffAmount($amount, $rateA, $rateB);
+        }
 
         $orderNo = generateNo('ORD');
 
@@ -117,7 +145,7 @@ class OrderService
         ];
     }
 
-    public static function approve(PDO $pdo, int $orderId, int $reviewerId): void
+    public static function approve(PDO $pdo, int $orderId, int $reviewerId, array $override = []): void
     {
         $pdo->beginTransaction();
         try {
@@ -128,16 +156,36 @@ class OrderService
             if (!$order) {
                 throw new RuntimeException('订单不存在');
             }
+            if (!empty($order['deleted_at'])) {
+                throw new RuntimeException('订单已删除');
+            }
             if ($order['status'] !== 'PENDING') {
                 throw new RuntimeException('订单状态不允许审核');
             }
 
             require_once __DIR__ . '/SettlementService.php';
-            if ($order['staff_amount'] !== null) {
+            $rateA = isset($order['rate_a']) && $order['rate_a'] !== null ? (float) $order['rate_a'] : null;
+            $rateB = isset($order['rate_b']) && $order['rate_b'] !== null ? (float) $order['rate_b'] : null;
+
+            if (isset($override['rate_a']) && $override['rate_a'] !== '') {
+                $rateA = (float) $override['rate_a'];
+            } elseif (isset($override['rate_a_pct']) && $override['rate_a_pct'] !== '') {
+                $rateA = (float) $override['rate_a_pct'] / 100;
+            }
+            if (isset($override['rate_b']) && $override['rate_b'] !== '') {
+                $rateB = (float) $override['rate_b'];
+            } elseif (isset($override['rate_b_pct']) && $override['rate_b_pct'] !== '') {
+                $rateB = (float) $override['rate_b_pct'] / 100;
+            }
+
+            if (isset($override['staff_amount']) && $override['staff_amount'] !== '') {
+                $staffAmount = round((float) $override['staff_amount'], 2);
+            } elseif ($order['staff_amount'] !== null && $override === []) {
+                $staffAmount = (float) $order['staff_amount'];
+            } elseif ($order['staff_amount'] !== null && !isset($override['rate_a']) && !isset($override['rate_a_pct'])
+                && !isset($override['rate_b']) && !isset($override['rate_b_pct'])) {
                 $staffAmount = (float) $order['staff_amount'];
             } else {
-                $rateA = isset($order['rate_a']) && $order['rate_a'] !== null ? (float) $order['rate_a'] : null;
-                $rateB = isset($order['rate_b']) && $order['rate_b'] !== null ? (float) $order['rate_b'] : null;
                 $staffAmount = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
             }
 
@@ -158,10 +206,18 @@ class OrderService
                 $stmt->execute([$deduct, $customer['id']]);
             }
 
-            $stmt = $pdo->prepare(
-                "UPDATE orders SET status = 'APPROVED', staff_amount = ?, reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
-            );
-            $stmt->execute([$staffAmount, $reviewerId, $orderId]);
+            try {
+                $stmt = $pdo->prepare(
+                    "UPDATE orders SET status = 'APPROVED', staff_amount = ?, rate_a = ?, rate_b = ?,
+                     reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
+                );
+                $stmt->execute([$staffAmount, $rateA, $rateB, $reviewerId, $orderId]);
+            } catch (PDOException) {
+                $stmt = $pdo->prepare(
+                    "UPDATE orders SET status = 'APPROVED', staff_amount = ?, reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
+                );
+                $stmt->execute([$staffAmount, $reviewerId, $orderId]);
+            }
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -202,17 +258,31 @@ class OrderService
 
     public static function getByStaff(PDO $pdo, int $staffId): array
     {
-        $stmt = $pdo->prepare(
-            "SELECT o.*, c.name AS customer_name, b.name AS business_type_name, u.nickname AS staff_name
-             FROM orders o
-             JOIN customers c ON c.id = o.customer_id
-             JOIN business_types b ON b.id = o.business_type_id
-             JOIN users u ON u.id = o.staff_id
-             WHERE o.staff_id = ?
-             ORDER BY o.created_at DESC"
-        );
-        $stmt->execute([$staffId]);
-        return $stmt->fetchAll();
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT o.*, c.name AS customer_name, b.name AS business_type_name, u.nickname AS staff_name
+                 FROM orders o
+                 JOIN customers c ON c.id = o.customer_id
+                 JOIN business_types b ON b.id = o.business_type_id
+                 JOIN users u ON u.id = o.staff_id
+                 WHERE o.staff_id = ? AND o.deleted_at IS NULL
+                 ORDER BY o.created_at DESC"
+            );
+            $stmt->execute([$staffId]);
+            return $stmt->fetchAll();
+        } catch (PDOException) {
+            $stmt = $pdo->prepare(
+                "SELECT o.*, c.name AS customer_name, b.name AS business_type_name, u.nickname AS staff_name
+                 FROM orders o
+                 JOIN customers c ON c.id = o.customer_id
+                 JOIN business_types b ON b.id = o.business_type_id
+                 JOIN users u ON u.id = o.staff_id
+                 WHERE o.staff_id = ?
+                 ORDER BY o.created_at DESC"
+            );
+            $stmt->execute([$staffId]);
+            return $stmt->fetchAll();
+        }
     }
 
     public static function search(PDO $pdo, array $filters = []): array
@@ -272,25 +342,90 @@ class OrderService
         return $stmt->fetchAll();
     }
 
+    /** 物理删除订单（删了就没了，统计不再计入）；已通过预存单会退回客户余额 */
+    public static function hardDelete(PDO $pdo, int $orderId): void
+    {
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ? FOR UPDATE');
+            $stmt->execute([$orderId]);
+            $order = $stmt->fetch();
+            if (!$order) {
+                throw new RuntimeException('订单不存在');
+            }
+
+            if ($order['status'] === 'APPROVED' || $order['status'] === 'SETTLED') {
+                $cStmt = $pdo->prepare('SELECT * FROM customers WHERE id = ? FOR UPDATE');
+                $cStmt->execute([(int) $order['customer_id']]);
+                $customer = $cStmt->fetch();
+                if ($customer && (int) ($customer['is_prepaid'] ?? 0) === 1) {
+                    $pdo->prepare('UPDATE customers SET balance = balance + ? WHERE id = ?')
+                        ->execute([(float) $order['amount'], $customer['id']]);
+                }
+            }
+
+            $pdo->prepare('DELETE FROM orders WHERE id = ?')->execute([$orderId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /** @deprecated 使用 hardDelete */
     public static function softDelete(PDO $pdo, int $orderId): void
     {
-        $stmt = $pdo->prepare('UPDATE orders SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL');
-        $stmt->execute([$orderId]);
-        if ($stmt->rowCount() === 0) {
-            throw new RuntimeException('订单不存在或已删除');
-        }
+        self::hardDelete($pdo, $orderId);
     }
 
     public static function softDeleteMany(PDO $pdo, array $ids): int
     {
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
-        if ($ids === []) {
-            return 0;
+        $n = 0;
+        foreach ($ids as $id) {
+            self::hardDelete($pdo, $id);
+            $n++;
         }
-        $in = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $pdo->prepare("UPDATE orders SET deleted_at = NOW() WHERE id IN ({$in}) AND deleted_at IS NULL");
-        $stmt->execute($ids);
-        return $stmt->rowCount();
+        return $n;
+    }
+
+    /** 待审核订单改结算金额（不审核） */
+    public static function updateSettlement(PDO $pdo, int $orderId, array $data): void
+    {
+        $stmt = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
+        $stmt->execute([$orderId]);
+        $order = $stmt->fetch();
+        if (!$order) {
+            throw new RuntimeException('订单不存在');
+        }
+        if ($order['status'] !== 'PENDING') {
+            throw new RuntimeException('仅待审核订单可改结算');
+        }
+
+        require_once __DIR__ . '/SettlementService.php';
+        $rateA = isset($order['rate_a']) ? (float) $order['rate_a'] : (float) SettlementService::rates()['rate_a'];
+        $rateB = isset($order['rate_b']) ? (float) $order['rate_b'] : (float) SettlementService::rates()['rate_b'];
+
+        if (isset($data['rate_a_pct']) && $data['rate_a_pct'] !== '') {
+            $rateA = (float) $data['rate_a_pct'] / 100;
+        }
+        if (isset($data['rate_b_pct']) && $data['rate_b_pct'] !== '') {
+            $rateB = (float) $data['rate_b_pct'] / 100;
+        }
+
+        if (isset($data['staff_amount']) && $data['staff_amount'] !== '') {
+            $staffAmount = round((float) $data['staff_amount'], 2);
+        } else {
+            $staffAmount = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
+        }
+
+        try {
+            $pdo->prepare('UPDATE orders SET staff_amount = ?, rate_a = ?, rate_b = ? WHERE id = ?')
+                ->execute([$staffAmount, $rateA, $rateB, $orderId]);
+        } catch (PDOException) {
+            $pdo->prepare('UPDATE orders SET staff_amount = ? WHERE id = ?')
+                ->execute([$staffAmount, $orderId]);
+        }
     }
 
     public static function getById(PDO $pdo, int $orderId): ?array
