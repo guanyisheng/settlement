@@ -151,15 +151,28 @@ class WithdrawalService
 
     public static function getById(PDO $pdo, int $id): ?array
     {
-        $stmt = $pdo->prepare(
-            "SELECT w.*, u.nickname AS staff_name, u.username AS staff_username,
-                    p.nickname AS processor_name
-             FROM withdrawals w
-             JOIN users u ON u.id = w.staff_id
-             LEFT JOIN users p ON p.id = w.processed_by
-             WHERE w.id = ?"
-        );
-        $stmt->execute([$id]);
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT w.*, u.nickname AS staff_name, u.username AS staff_username,
+                        u.pay_qr_key AS staff_pay_qr_key,
+                        p.nickname AS processor_name
+                 FROM withdrawals w
+                 JOIN users u ON u.id = w.staff_id
+                 LEFT JOIN users p ON p.id = w.processed_by
+                 WHERE w.id = ?"
+            );
+            $stmt->execute([$id]);
+        } catch (PDOException) {
+            $stmt = $pdo->prepare(
+                "SELECT w.*, u.nickname AS staff_name, u.username AS staff_username,
+                        p.nickname AS processor_name
+                 FROM withdrawals w
+                 JOIN users u ON u.id = w.staff_id
+                 LEFT JOIN users p ON p.id = w.processed_by
+                 WHERE w.id = ?"
+            );
+            $stmt->execute([$id]);
+        }
         $row = $stmt->fetch();
         return $row ?: null;
     }

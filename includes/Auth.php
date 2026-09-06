@@ -82,6 +82,28 @@ class Auth
         ];
     }
 
+    /** 资料变更后刷新会话中的展示信息 */
+    public static function refreshSessionUser(PDO $pdo, int $userId): void
+    {
+        self::startSession();
+        if (!isset($_SESSION['user']) || (int) ($_SESSION['user']['id'] ?? 0) !== $userId) {
+            return;
+        }
+        $stmt = $pdo->prepare('SELECT id, username, nickname, role FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return;
+        }
+        $_SESSION['user']['username'] = $row['username'];
+        $_SESSION['user']['nickname'] = $row['nickname'];
+        $role = (string) $row['role'];
+        if ($role === 'ADMIN') {
+            $role = 'BOSS';
+        }
+        $_SESSION['user']['role'] = $role;
+    }
+
     public static function logout(): void
     {
         self::startSession();

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/Auth.php';
 require_once __DIR__ . '/../includes/Database.php';
 require_once __DIR__ . '/../includes/StaffPhotoService.php';
 require_once __DIR__ . '/../includes/StaffPhotoStorage.php';
+require_once __DIR__ . '/../includes/UserService.php';
 require_once __DIR__ . '/../includes/HonorService.php';
 
 Auth::requireStaff();
@@ -38,6 +39,13 @@ try {
             exit('无权查看');
         }
         $key = $row['image_key'];
+    } elseif ($type === 'pay_qr') {
+        $user = UserService::getById($pdo, $uid);
+        if (!$user || empty($user['pay_qr_key'])) {
+            http_response_code(404);
+            exit('未上传收款码');
+        }
+        $key = $user['pay_qr_key'];
     } else {
         http_response_code(400);
         exit('参数错误');
