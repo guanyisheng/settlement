@@ -8,6 +8,18 @@ require_once __DIR__ . '/helpers.php';
 
 class WithdrawalService
 {
+    /** 当天是否已申请过提现（任意状态都算一次） */
+    public static function hasAppliedToday(PDO $pdo, int $staffId): bool
+    {
+        $stmt = $pdo->prepare(
+            'SELECT id FROM withdrawals
+             WHERE staff_id = ? AND DATE(created_at) = CURDATE()
+             LIMIT 1'
+        );
+        $stmt->execute([$staffId]);
+        return (bool) $stmt->fetch();
+    }
+
     public static function create(PDO $pdo, int $staffId, float $amount): array
     {
         if ($amount <= 0) {
@@ -16,6 +28,17 @@ class WithdrawalService
 
         $pdo->beginTransaction();
         try {
+            // 锁定当日记录，防止并发连点
+            $stmt = $pdo->prepare(
+                'SELECT id FROM withdrawals
+                 WHERE staff_id = ? AND DATE(created_at) = CURDATE()
+                 FOR UPDATE'
+            );
+            $stmt->execute([$staffId]);
+            if ($stmt->fetch()) {
+                throw new InvalidArgumentException('每天只能申请提现一次，请明天再试');
+            }
+
             $available = BalanceService::getAvailableBalanceForUpdate($pdo, $staffId);
 
             if ($amount > $available) {
