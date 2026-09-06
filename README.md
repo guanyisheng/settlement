@@ -2,44 +2,54 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-轻量级 **电竞/陪玩团队内部清账系统**：打手报单 → 审核 → 结算入账 → 提现申请 → 人工放款。  
+轻量级 **电竞/陪玩团队内部清账系统**：打手报单 → 审核结算 → 提现申请 → 人工扫码放款。  
 无第三方支付对接，适合自营团队自建部署。
 
-**PHP 8 + MySQL**，无框架，开箱即用。后台可配置品牌、结算倍率、腾讯云 COS；支持 **可配置 RBAC 角色权限** 与数据范围，无需改代码。
+**PHP 8 + MySQL**，无框架。支持品牌配置、腾讯云 COS、**RBAC 多角色权限**、打手资料（毛照 / 荣誉 / 收款码）等。
+
+操作说明见仓库内 [`使用手册.md`](使用手册.md)（面向客服 / 打手 / 老板的日常用法）。
 
 ---
 
 ## 功能特性
 
 ### 打手端（移动端）
-- 自主注册与登录，后台审核通过后启用
-- 报单：客户/业务类型可搜索、微信订单号（防重复）、多张截图、整数数量、接单时间
-- 订单列表、预计到手金额（按报单时倍率快照计算）
+- 自主注册（用户名实时查重）、登录；后台审核通过后启用
+- 报单：客户 / 业务可搜索、微信订单号防重、多张截图、数量与接单时间
+- 订单列表与预计到手（按报单时倍率快照）
 - 提现申请与记录
-- 修改密码
+- **修改信息**（原改密入口）：昵称、毛照多图、荣誉、收款转账二维码、可选改密
+- 底部导航：订单 / 报单 / 毛照 / 荣誉 / 提现
 
 ### 管理后台（PC）
 | 能力 | 说明 |
 |------|------|
-| 工作台 / 订单 / 数据统计 | 审核、趋势与多维度统计 |
-| 角色权限（RBAC） | 自定义角色、权限点勾选、数据范围（全部/本人/指定打手·客户·业务） |
-| 结算倍率 | 独立「结算倍率」页；公式：订单金额 × 基础倍率 × 打手倍率；历史订单不重算 |
-| 系统设置 | 品牌名 / Logo / 主题色、COS、存储方式 |
-| 提现 / 注册审核 / 打手管理 | 按角色权限控制 |
-| 客户 / 业务类型 | 预存余额客户、审核通过自动扣款 |
-| 员工管理 | 多角色分配（含自定义角色）、逻辑删除 |
+| 工作台 / 订单 / 数据统计 | 审核、趋势与多维统计 |
+| 角色权限（RBAC） | 自定义角色、权限点、数据范围 |
+| 业务类型 | 维护单价；**页顶配置默认结算倍率**（客服可改） |
+| 订单审核结算 | 默认按倍率；特殊单可改本单倍率或直接填结算金额（改倍率会自动重算） |
+| 提现管理 | 详情展示打手上传的收款码，扫码后确认放款 |
+| 注册审核 / 打手 / 员工 | 打手与员工列表支持搜索；禁用账号沉底 |
+| 客户管理 | 预存余额；审核通过可自动扣款 |
+| 系统设置 | 品牌、**系统版本号**、COS / 存储方式 |
+| 员工管理 | 多角色勾选（如客服&考官） |
 
-内置系统角色（可在此基础上增删改权限）：**老板、客服、考官、打手**（原「管理员」已合并进老板）。
+内置角色：**老板、客服、考官、打手**（原「管理员」已并入老板）。一人可多角色，权限取并集。
 
-### 打手档案
-- 入职时间、考核官、押金
-- **毛照多图**上传 / 查看 / 下载（权限可控）
-- **荣誉记录**（标题 + 多图）
+### 结算公式
 
-### 订单与结算
-- 报单时写入倍率快照（`rate_a` / `rate_b`），之后改倍率不影响旧单
-- 订单 / 用户支持逻辑删除
-- 客户预存余额，审核通过自动扣款
+```
+打手到手 = 订单金额 × 基础倍率 × 打手倍率
+```
+
+- 报单时写入 `rate_a` / `rate_b` / `staff_amount` 快照；改默认倍率**不重算历史单**
+- 默认倍率在 **业务类型** 页配置；特殊单在订单详情处理
+- 旧入口 `/admin/rates.php` 已重定向到业务类型页
+
+### 上传限制
+- 毛照 / 荣誉 / 注册毛照：可多选；单次合计 ≤ **30MB**，单张 ≤ 15MB（JPG/PNG/WEBP）
+- 报单截图：最多 9 张，单张约 5MB
+- 建议 Nginx / PHP `client_max_body_size` / `upload_max_filesize` ≥ 50MB
 
 ### 存储
 - 腾讯云 COS（推荐）或本地 `uploads/`（密钥无效时自动降级）
@@ -74,7 +84,7 @@ cp config/cos.example.php config/cos.php   # 可选，也可在后台【系统�
 php install.php
 ```
 
-新装会带上最新表结构（含 RBAC）。若已有旧库，见下方「数据库迁移」。
+新装含最新表结构（RBAC、毛照/荣誉、结算快照等）。旧库见下方「数据库迁移」。
 
 ### 4. 目录权限
 
@@ -100,33 +110,38 @@ php -S localhost:8080 router.php
 
 ### 6. 后台配置（推荐）
 
-老板登录后依次配置：
-1. **系统设置**：站点名称、Logo、主题色、COS
-2. **结算倍率**：基础倍率 / 打手倍率
-3. **角色权限**：按需调整各角色权限与数据范围
-4. **员工管理**：为账号勾选角色
+老板登录后：
+1. **系统设置**：站点名称、Logo、主题色、版本号、COS
+2. **业务类型**：业务单价 + 顶部默认结算倍率
+3. **角色权限 / 员工管理**：按需分配多角色
+4. 打手在端上「资料」上传收款二维码，便于提现扫码放款
 
 ---
 
 ## 目录结构
 
 ```
-├── admin/              # 管理后台（含 roles / rates / employees 等）
+├── admin/              # 管理后台
 ├── staff/              # 打手移动端
 ├── includes/           # 业务逻辑（Auth / RBAC / Order / Settlement…）
-├── config/             # 配置文件（database/cos 不提交 git）
+├── config/             # 配置（database.php / cos.php 不提交）
 ├── database/           # SQL 结构与迁移
-├── uploads/            # 本地存储（不提交 git）
-├── scripts/            # 诊断 / 迁移辅助脚本
-├── install.php         # 一键安装
-└── router.php          # 内置服务器路由
+├── uploads/            # 本地存储（不提交）
+├── scripts/            # 诊断 / 迁移脚本
+├── 使用手册.md          # 三端操作说明（用户向）
+├── install.php
+└── router.php
 ```
 
 ---
 
 ## 生产部署
 
-推荐使用 **Nginx + PHP-FPM**，网站根目录指向项目根目录。
+推荐 **Nginx + PHP-FPM**，网站根目录为项目根目录。上传相关建议：
+
+```nginx
+client_max_body_size 50m;
+```
 
 ```nginx
 server {
@@ -134,6 +149,7 @@ server {
     server_name your-domain.com;
     root /var/www/settlement;
     index index.php;
+    client_max_body_size 50m;
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;
@@ -151,26 +167,28 @@ server {
 }
 ```
 
+PHP 侧建议 `upload_max_filesize` / `post_max_size` ≥ `50M`。
+
 ---
 
 ## 数据库迁移（已有旧库）
 
-按顺序在 phpMyAdmin 或命令行执行（若某步报 Duplicate column 可跳过）：
+在 phpMyAdmin **先选中业务库**再执行（不要写死 `USE settlement`，生产库名可能不同）。
 
-- `migrate_wechat_order_no.sql`
-- `migrate_order_screenshot.sql` / `migrate_screenshot_keys.sql`
-- `migrate_staff_profile.sql`
-- `migrate_staff_photo_key.sql`
-- `migrate_settlement_roles_customers.sql`
-- `migrate_add_boss.sql`
-- `migrate_system_settings.sql`
-- **`migrate_rbac_v2.sql`**（多角色 RBAC、毛照多图、荣誉、倍率快照、逻辑删除）
+推荐一次执行：
 
-也可一次执行汇总脚本：`database/本次更新_总SQL.sql`（可重复执行，已存在的表/列会跳过）。
+- **`database/本次更新_总SQL.sql`**（可重复执行，已存在表/列会跳过）
 
-辅助：`php scripts/migrate_rbac.php`（若环境支持）。
+或按需单独执行，例如：
 
-新安装直接 `php install.php` 即可。
+| 脚本 | 说明 |
+|------|------|
+| `migrate_rbac_v2.sql` | RBAC、毛照多图、荣誉、倍率快照等 |
+| `migrate_pay_qr.sql` | 打手收款二维码字段 `pay_qr_key`（提现扫码用） |
+| `migrate_system_settings.sql` | 系统设置表 |
+| `reset_total_income_to_zero.sql` | **可选运维**：将已通过订单结算金额清零（慎用，先备份） |
+
+辅助：`php scripts/migrate_rbac.php`（若环境支持）。新安装直接 `php install.php`。
 
 ---
 
@@ -198,7 +216,8 @@ php scripts/cos_diagnose.php
 - 提现使用事务 + 行锁
 - 订单金额与结算金额后端计算，报单写入倍率快照
 - 后台按权限点与数据范围鉴权（RBAC 未就绪时回退旧角色矩阵）
-- **切勿**将 `config/database.php`、`config/cos.php` 提交到公开仓库
+- **切勿**将 `config/database.php`、`config/cos.php`、密钥提交到公开仓库
+- `.cursor/` 为本地编辑器配置，已 gitignore，勿提交
 - 生产环境使用 HTTPS
 
 ---
@@ -211,4 +230,4 @@ php scripts/cos_diagnose.php
 
 ## 贡献
 
-欢迎 Issue / Pull Request.
+欢迎 Issue / Pull Request。请从 `main` 拉取 `feature/…` 或 `fix/…` 分支开发，勿直接推 `main`。
