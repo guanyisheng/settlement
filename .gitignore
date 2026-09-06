@@ -8,3 +8,6 @@ uploads/*
 !uploads/.gitkeep
 !uploads/orders/.gitkeep
 !uploads/staff/.gitkeep
+
+# 本地 Cursor 规则，不进仓库
+.cursor/
