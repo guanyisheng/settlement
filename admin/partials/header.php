@@ -70,11 +70,6 @@ $isBoss = Auth::isBoss();
                 <?= svgIcon('employees') ?><span>角色权限</span>
             </a>
             <?php endif; ?>
-            <?php if (Auth::canAccessPage('rates')): ?>
-            <a href="/admin/rates.php" class="nav-item <?= $currentPage === 'rates' ? 'active' : '' ?>">
-                <?= svgIcon('settings') ?><span>结算倍率</span>
-            </a>
-            <?php endif; ?>
             <?php if (Auth::canAccessPage('settings')): ?>
             <a href="/admin/settings.php" class="nav-item <?= $currentPage === 'settings' ? 'active' : '' ?>">
                 <?= svgIcon('settings') ?><span>系统设置</span>

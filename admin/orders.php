@@ -17,17 +17,34 @@ $pdo = Database::getConnection();
 $error = flash('error');
 $success = flash('success');
 
-// 审核操作
+// 审核 / 改结算 / 删除
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $orderId = (int) ($_POST['order_id'] ?? 0);
     try {
         if ($action === 'approve') {
-            OrderService::approve($pdo, $orderId, Auth::id());
+            if (!Auth::can('order.review') && !Auth::canAccessPage('orders')) {
+                throw new RuntimeException('无审核权限');
+            }
+            OrderService::approve($pdo, $orderId, Auth::id(), [
+                'staff_amount' => $_POST['staff_amount'] ?? '',
+                'rate_a_pct'   => $_POST['rate_a_pct'] ?? '',
+                'rate_b_pct'   => $_POST['rate_b_pct'] ?? '',
+            ]);
             flash('success', '订单已通过');
         } elseif ($action === 'reject') {
             OrderService::reject($pdo, $orderId, Auth::id(), $_POST['reject_reason'] ?? '');
             flash('success', '订单已拒绝');
+        } elseif ($action === 'update_settlement') {
+            OrderService::updateSettlement($pdo, $orderId, $_POST);
+            flash('success', '本单结算已更新（未改全局倍率）');
+        } elseif ($action === 'delete') {
+            if (!Auth::can('order.delete') && !Auth::isBoss()) {
+                throw new RuntimeException('无删除权限');
+            }
+            OrderService::hardDelete($pdo, $orderId);
+            flash('success', '订单已彻底删除，不再计入统计');
+            redirect('/admin/orders.php');
         }
         redirect('/admin/orders.php?' . http_build_query($_GET));
     } catch (Throwable $e) {
@@ -50,6 +67,9 @@ $orders = OrderService::search($pdo, $filters);
 $staffList = UserService::getStaffList($pdo);
 $customers = CustomerService::getAll($pdo);
 $businessTypes = BusinessTypeService::getAll($pdo);
+$defaultRates = SettlementService::rates();
+$canDelete = Auth::can('order.delete') || Auth::isBoss();
+$canReview = Auth::can('order.review') || Auth::isBoss();
 
 $viewOrder = null;
 if (!empty($_GET['id'])) {
@@ -146,13 +166,20 @@ require __DIR__ . '/partials/header.php';
                         <td><?= formatDateTimeShort($o['created_at']) ?></td>
                         <td class="actions">
                             <a href="?<?= http_build_query(array_merge($_GET, ['id' => $o['id']])) ?>" class="btn btn-sm">详情</a>
-                            <?php if ($o['status'] === 'PENDING'): ?>
+                            <?php if ($o['status'] === 'PENDING' && $canReview): ?>
                                 <form method="post" style="display:inline" onsubmit="return confirm('确认通过此订单？')">
                                     <input type="hidden" name="action" value="approve">
                                     <input type="hidden" name="order_id" value="<?= $o['id'] ?>">
                                     <button type="submit" class="btn btn-sm btn-success">通过</button>
                                 </form>
                                 <button type="button" class="btn btn-sm btn-danger" onclick="openReject(<?= $o['id'] ?>)">拒绝</button>
+                            <?php endif; ?>
+                            <?php if ($canDelete): ?>
+                                <form method="post" style="display:inline" onsubmit="return confirm('彻底删除后不可恢复，且不再计入统计/余额。确定？')">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="order_id" value="<?= $o['id'] ?>">
+                                    <button type="submit" class="btn btn-sm">删除</button>
+                                </form>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -189,7 +216,17 @@ require __DIR__ . '/partials/header.php';
                 <dt>数量</dt><dd><?= e((string) (int) $viewOrder['quantity']) ?></dd>
                 <dt>单价</dt><dd><?= formatMoney($viewOrder['unit_price']) ?></dd>
                 <dt>订单金额</dt><dd class="money"><?= formatMoney($viewOrder['amount']) ?></dd>
-                <dt>打手结算</dt><dd class="money"><?= formatMoney($viewOrder['staff_amount'] ?? SettlementService::calcStaffAmount((float) $viewOrder['amount'])) ?> <span style="color:var(--text-muted);font-size:12px"><?= SettlementService::formulaLabel() ?></span></dd>
+                <dt>打手结算</dt>
+                <dd class="money">
+                    <?= formatMoney($viewOrder['staff_amount'] ?? SettlementService::calcStaffAmount((float) $viewOrder['amount'])) ?>
+                    <span style="color:var(--text-muted);font-size:12px">
+                        <?= e(SettlementService::formulaLabel(
+                            isset($viewOrder['rate_a']) ? (float) $viewOrder['rate_a'] : null,
+                            isset($viewOrder['rate_b']) ? (float) $viewOrder['rate_b'] : null
+                        )) ?>
+                        （本单快照，改全局倍率不影响）
+                    </span>
+                </dd>
                 <dt>开始时间</dt><dd><?= formatDateTime($viewOrder['start_time']) ?></dd>
                 <dt>结束时间</dt><dd><?= formatDateTime($viewOrder['end_time']) ?></dd>
                 <dt>备注</dt><dd><?= e($viewOrder['remark'] ?: '-') ?></dd>
@@ -203,8 +240,46 @@ require __DIR__ . '/partials/header.php';
                 <dt>拒绝原因</dt><dd style="color:var(--danger)"><?= e($viewOrder['reject_reason']) ?></dd>
                 <?php endif; ?>
             </dl>
+
+            <?php if ($viewOrder['status'] === 'PENDING' && $canReview): ?>
+            <?php
+                $ra = round(((float) ($viewOrder['rate_a'] ?? $defaultRates['rate_a'])) * 100, 2);
+                $rb = round(((float) ($viewOrder['rate_b'] ?? $defaultRates['rate_b'])) * 100, 2);
+                $sa = $viewOrder['staff_amount'] ?? '';
+            ?>
+            <hr style="border-color:var(--border);margin:16px 0">
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">默认按业务类型页的倍率；特殊单可改<strong>本单</strong>倍率或直接填结算金额（其它单不受影响）</p>
+            <form method="post" id="settleForm">
+                <input type="hidden" name="order_id" value="<?= (int) $viewOrder['id'] ?>">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>基础倍率 %</label>
+                        <input type="number" name="rate_a_pct" class="form-control" step="0.01" min="0" max="100" value="<?= e((string) $ra) ?>">
+                    </div>
+                    <div class="form-group">
+                        <label>打手倍率 %</label>
+                        <input type="number" name="rate_b_pct" class="form-control" step="0.01" min="0" max="100" value="<?= e((string) $rb) ?>">
+                    </div>
+                    <div class="form-group">
+                        <label>打手结算金额（可直接填）</label>
+                        <input type="number" name="staff_amount" class="form-control" step="0.01" min="0"
+                               value="<?= e((string) $sa) ?>" placeholder="填了优先生效，适合体验单">
+                    </div>
+                </div>
+                <button type="submit" name="action" value="approve" class="btn btn-success"
+                        onclick="return confirm('按上方金额/倍率通过此单？')">按此结算通过</button>
+                <button type="submit" name="action" value="update_settlement" class="btn">仅保存结算</button>
+            </form>
+            <?php endif; ?>
         </div>
         <div class="modal-footer">
+            <?php if ($canDelete): ?>
+            <form method="post" style="margin-right:auto" onsubmit="return confirm('彻底删除？删后统计/余额都不再算这单')">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="order_id" value="<?= (int) $viewOrder['id'] ?>">
+                <button type="submit" class="btn btn-danger">删除订单</button>
+            </form>
+            <?php endif; ?>
             <a href="/admin/orders.php?<?= http_build_query(array_diff_key($_GET, ['id' => ''])) ?>" class="btn">关闭</a>
         </div>
     </div>

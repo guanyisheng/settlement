@@ -31,8 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'brand_name'        => trim($_POST['brand_name'] ?? ''),
                 'brand_logo'        => trim($_POST['brand_logo'] ?? ''),
                 'brand_theme_color' => trim($_POST['brand_theme_color'] ?? '#001A72'),
-                'settlement_rate_a' => trim($_POST['settlement_rate_a'] ?? '0.8'),
-                'settlement_rate_b' => trim($_POST['settlement_rate_b'] ?? '0.5'),
                 'storage_driver'    => trim($_POST['storage_driver'] ?? 'auto'),
                 'cos_secret_id'     => trim($_POST['cos_secret_id'] ?? ''),
                 'cos_region'        => trim($_POST['cos_region'] ?? ''),
@@ -95,17 +93,11 @@ require __DIR__ . '/partials/header.php';
     <div class="card">
         <div class="card-header"><h2>结算系数</h2></div>
         <div class="card-body">
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">打手到手 = 订单金额 × 系数A × 系数B</p>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>系数 A（如 0.8 = 80%）</label>
-                    <input type="number" name="settlement_rate_a" class="form-control" step="0.01" min="0" max="1" value="<?= e($s['settlement_rate_a']) ?>">
-                </div>
-                <div class="form-group">
-                    <label>系数 B（如 0.5 = 50%）</label>
-                    <input type="number" name="settlement_rate_b" class="form-control" step="0.01" min="0" max="1" value="<?= e($s['settlement_rate_b']) ?>">
-                </div>
-            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin:0">
+                默认结算倍率已移至
+                <a href="/admin/business_types.php#settlement">业务类型 → 默认结算倍率</a>
+                （客服可改）。特殊单在订单详情里手动调整。
+            </p>
         </div>
     </div>
 
