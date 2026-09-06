@@ -46,14 +46,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             UserService::resetEmployeePassword($pdo, (int) $_POST['id'], $_POST['password'] ?? '');
             flash('success', '密码已重置');
         }
-        redirect('/admin/employees.php');
+        redirect('/admin/employees.php' . (!empty($_GET['q']) ? '?q=' . urlencode((string) $_GET['q']) : ''));
     } catch (Throwable $e) {
         flash('error', $e->getMessage());
         redirect('/admin/employees.php');
     }
 }
 
-$employees = UserService::getEmployeeList($pdo);
+$keyword = trim((string) ($_GET['q'] ?? ''));
+$employees = UserService::getEmployeeList($pdo, $keyword);
 $employeeRoles = [];
 if ($rbac) {
     foreach ($employees as $emp) {
@@ -145,7 +146,17 @@ $renderRoleChecks = static function (array $roles, string $nameAttr = 'role_ids[
 </div>
 
 <div class="card">
-    <div class="card-header"><h2>员工列表 (<?= count($employees) ?>)</h2></div>
+    <div class="card-header" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">员工列表 (<?= count($employees) ?>)</h2>
+        <form method="get" style="display:flex;gap:8px;align-items:center;margin:0">
+            <input type="search" name="q" class="form-control" value="<?= e($keyword) ?>"
+                   placeholder="搜用户名 / 昵称 / ID" style="min-width:200px">
+            <button type="submit" class="btn btn-primary">搜索</button>
+            <?php if ($keyword !== ''): ?>
+                <a href="/admin/employees.php" class="btn">清除</a>
+            <?php endif; ?>
+        </form>
+    </div>
     <div class="card-body" style="padding:0">
         <div class="table-wrap">
             <table>
@@ -156,7 +167,9 @@ $renderRoleChecks = static function (array $roles, string $nameAttr = 'role_ids[
                 </thead>
                 <tbody>
                 <?php if (empty($employees)): ?>
-                    <tr><td colspan="7" style="text-align:center;color:var(--text-muted)">暂无员工</td></tr>
+                    <tr><td colspan="7" style="text-align:center;color:var(--text-muted)">
+                        <?= $keyword !== '' ? '没有匹配的员工' : '暂无员工' ?>
+                    </td></tr>
                 <?php else: ?>
                     <?php foreach ($employees as $emp): ?>
                     <?php
@@ -167,7 +180,7 @@ $renderRoleChecks = static function (array $roles, string $nameAttr = 'role_ids[
                             : roleLabel(($emp['role'] ?? '') === 'ADMIN' ? 'BOSS' : ($emp['role'] ?? ''));
                         $roleIds = array_map(static fn($r) => (int) $r['id'], $roles);
                     ?>
-                    <tr>
+                    <tr<?= !(int) $emp['status'] ? ' style="opacity:.72"' : '' ?>>
                         <td><?= $rid ?></td>
                         <td><?= e($emp['username']) ?></td>
                         <td><?= e($emp['nickname']) ?></td>
@@ -189,6 +202,7 @@ $renderRoleChecks = static function (array $roles, string $nameAttr = 'role_ids[
                 </tbody>
             </table>
         </div>
+        <p style="font-size:12px;color:var(--text-muted);padding:10px 16px;margin:0">列表按启用优先，禁用账号排在下方</p>
     </div>
 </div>
 

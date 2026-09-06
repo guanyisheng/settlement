@@ -26,6 +26,7 @@ class SettingsService
             'brand_name'        => '清账系统',
             'brand_logo'        => '/img/logo.png',
             'brand_theme_color' => '#001A72',
+            'app_version'       => '1.2.0',
             'settlement_rate_a' => (string) ($settlement['rate_a'] ?? 0.8),
             'settlement_rate_b' => (string) ($settlement['rate_b'] ?? 0.5),
             'storage_driver'    => (string) ($storage['driver'] ?? 'auto'),

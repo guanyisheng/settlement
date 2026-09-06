@@ -31,14 +31,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             UserService::deleteStaff($pdo, (int) $_POST['id']);
             flash('success', '打手已删除（无历史单则彻底删除；有订单则隐藏账号并释放用户名）');
         }
-        redirect('/admin/staff.php');
+        redirect('/admin/staff.php' . (!empty($_GET['q']) ? '?q=' . urlencode((string) $_GET['q']) : ''));
     } catch (Throwable $e) {
         flash('error', $e->getMessage());
         redirect('/admin/staff.php');
     }
 }
 
-$staffList = UserService::getStaffList($pdo);
+$keyword = trim((string) ($_GET['q'] ?? ''));
+$staffList = UserService::getStaffList($pdo, $keyword);
 
 $currentPage = 'staff';
 $pageTitle = '打手管理';
@@ -95,7 +96,17 @@ require __DIR__ . '/partials/header.php';
 </div>
 
 <div class="card">
-    <div class="card-header"><h2>打手列表 (<?= count($staffList) ?>)</h2></div>
+    <div class="card-header" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">打手列表 (<?= count($staffList) ?>)</h2>
+        <form method="get" style="display:flex;gap:8px;align-items:center;margin:0">
+            <input type="search" name="q" class="form-control" value="<?= e($keyword) ?>"
+                   placeholder="搜用户名 / 昵称 / 考核官 / ID" style="min-width:220px">
+            <button type="submit" class="btn btn-primary">搜索</button>
+            <?php if ($keyword !== ''): ?>
+                <a href="/admin/staff.php" class="btn">清除</a>
+            <?php endif; ?>
+        </form>
+    </div>
     <div class="card-body" style="padding:0">
         <div class="table-wrap">
             <table>
@@ -106,10 +117,15 @@ require __DIR__ . '/partials/header.php';
                     </tr>
                 </thead>
                 <tbody>
+                <?php if ($staffList === []): ?>
+                    <tr><td colspan="11" style="text-align:center;color:var(--text-muted)">
+                        <?= $keyword !== '' ? '没有匹配的打手' : '暂无打手' ?>
+                    </td></tr>
+                <?php endif; ?>
                 <?php foreach ($staffList as $s):
                     $stats = BalanceService::getBalanceSummary($pdo, (int) $s['id']);
                 ?>
-                    <tr>
+                    <tr<?= !(int) $s['status'] ? ' style="opacity:.72"' : '' ?>>
                         <td><?= $s['id'] ?></td>
                         <td><?= e($s['username']) ?></td>
                         <td><?= e($s['nickname']) ?></td>
@@ -142,6 +158,7 @@ require __DIR__ . '/partials/header.php';
                 </tbody>
             </table>
         </div>
+        <p style="font-size:12px;color:var(--text-muted);padding:10px 16px;margin:0">列表按启用优先，禁用账号排在下方</p>
     </div>
 </div>
 

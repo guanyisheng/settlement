@@ -10,19 +10,28 @@ class UserService
 {
     // ─── 打手 ───────────────────────────────────────────
 
-    public static function getStaffList(PDO $pdo): array
+    public static function getStaffList(PDO $pdo, ?string $keyword = null): array
     {
+        $keyword = trim((string) $keyword);
+        $params = [];
+        $where = "role = 'STAFF' AND status != " . Auth::STATUS_PENDING;
+        $order = 'ORDER BY status DESC, created_at DESC'; // 启用在前，禁用沉底
+
+        if ($keyword !== '') {
+            $where .= ' AND (username LIKE ? OR nickname LIKE ? OR IFNULL(examiner, \'\') LIKE ? OR CAST(id AS CHAR) = ?)';
+            $like = '%' . $keyword . '%';
+            $params = [$like, $like, $like, $keyword];
+        }
+
         try {
-            $stmt = $pdo->query(
-                "SELECT * FROM users WHERE role = 'STAFF' AND status != " . Auth::STATUS_PENDING . "
-                 AND deleted_at IS NULL
-                 ORDER BY created_at DESC"
-            );
+            $sql = "SELECT * FROM users WHERE {$where} AND deleted_at IS NULL {$order}";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
             return $stmt->fetchAll();
         } catch (PDOException) {
-            $stmt = $pdo->query(
-                "SELECT * FROM users WHERE role = 'STAFF' AND status != " . Auth::STATUS_PENDING . " ORDER BY created_at DESC"
-            );
+            $sql = "SELECT * FROM users WHERE {$where} {$order}";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
             return $stmt->fetchAll();
         }
     }
@@ -281,6 +290,83 @@ class UserService
         $stmt->execute([password_hash($newPassword, PASSWORD_DEFAULT), $userId]);
     }
 
+    /**
+     * 打手端「修改信息」：昵称、毛照、收款二维码、可选改密
+     */
+    public static function updateOwnProfile(PDO $pdo, int $userId, array $data, array $files = []): void
+    {
+        $user = self::getById($pdo, $userId);
+        if (!$user || ($user['role'] ?? '') !== 'STAFF') {
+            throw new RuntimeException('仅打手可修改个人资料');
+        }
+
+        $nickname = trim((string) ($data['nickname'] ?? ''));
+        if ($nickname === '') {
+            throw new InvalidArgumentException('请填写昵称 / 打手名');
+        }
+
+        $newPassword = (string) ($data['new_password'] ?? '');
+        $confirm = (string) ($data['confirm_password'] ?? '');
+        $oldPassword = (string) ($data['old_password'] ?? '');
+        if ($newPassword !== '' || $confirm !== '') {
+            if ($oldPassword === '') {
+                throw new InvalidArgumentException('修改密码请先填写当前密码');
+            }
+            self::changeOwnPassword($pdo, $userId, $oldPassword, $newPassword, $confirm);
+        }
+
+        $pdo->prepare('UPDATE users SET nickname = ? WHERE id = ?')->execute([$nickname, $userId]);
+
+        // 毛照（可多选）
+        $photoFiles = $files['photos'] ?? null;
+        if ($photoFiles !== null && normalizeUploadedFiles($photoFiles) !== []) {
+            require_once __DIR__ . '/StaffPhotoService.php';
+            StaffPhotoService::uploadMany($pdo, $userId, $userId, $photoFiles, $user['username']);
+        }
+
+        // 收款二维码（单张）
+        $qrFile = $files['pay_qr'] ?? null;
+        if ($qrFile !== null && ($qrFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            require_once __DIR__ . '/StaffPhotoStorage.php';
+            $storage = new StaffPhotoStorage();
+            $key = $storage->uploadPhoto($qrFile, $user['username'] . '_payqr');
+            try {
+                $pdo->prepare('UPDATE users SET pay_qr_key = ? WHERE id = ?')->execute([$key, $userId]);
+            } catch (PDOException $e) {
+                if (str_contains($e->getMessage(), 'pay_qr_key') || str_contains($e->getMessage(), 'Unknown column')) {
+                    throw new RuntimeException('请先执行 database/migrate_pay_qr.sql 增加收款二维码字段');
+                }
+                throw $e;
+            }
+        }
+
+        // 荣誉（名称 + 图片都填了才新增一条）
+        $honorTitle = trim((string) ($data['honor_title'] ?? ''));
+        $honorImages = $files['honor_images'] ?? null;
+        $hasHonorImages = $honorImages !== null && normalizeUploadedFiles($honorImages) !== [];
+        if ($honorTitle !== '' || $hasHonorImages) {
+            if ($honorTitle === '') {
+                throw new InvalidArgumentException('添加荣誉请填写荣誉名称');
+            }
+            if (!$hasHonorImages) {
+                throw new InvalidArgumentException('添加荣誉请至少上传一张图片');
+            }
+            require_once __DIR__ . '/HonorService.php';
+            HonorService::create(
+                $pdo,
+                $userId,
+                $userId,
+                $honorTitle,
+                (string) ($data['honor_remark'] ?? ''),
+                $honorImages,
+                $user['username']
+            );
+        }
+
+        require_once __DIR__ . '/Auth.php';
+        Auth::refreshSessionUser($pdo, $userId);
+    }
+
     public static function updateStaff(PDO $pdo, int $id, array $data, ?array $photoFile = null): void
     {
         $staff = self::getStaffById($pdo, $id);
@@ -375,13 +461,22 @@ class UserService
         }
     }
 
-    public static function getEmployeeList(PDO $pdo): array
+    public static function getEmployeeList(PDO $pdo, ?string $keyword = null): array
     {
+        $keyword = trim((string) $keyword);
+        $likeParams = [];
+        $searchSql = '';
+        if ($keyword !== '') {
+            $searchSql = ' AND (u.username LIKE ? OR u.nickname LIKE ? OR CAST(u.id AS CHAR) = ?)';
+            $like = '%' . $keyword . '%';
+            $likeParams = [$like, $like, $keyword];
+        }
+        $order = 'ORDER BY u.status DESC, u.created_at DESC'; // 启用在前，禁用沉底
+
         require_once __DIR__ . '/PermissionService.php';
         if (PermissionService::isRbacReady($pdo)) {
             try {
-                // 含任意非打手角色的用户（含自定义角色如财务）
-                $stmt = $pdo->query(
+                $stmt = $pdo->prepare(
                     "SELECT DISTINCT u.*
                      FROM users u
                      LEFT JOIN user_roles ur ON ur.user_id = u.id
@@ -401,25 +496,35 @@ class UserService
                                   AND (r2.code IS NULL OR r2.code = '' OR r2.code != 'STAFF')
                             )
                        )
-                     ORDER BY u.created_at DESC"
+                       {$searchSql}
+                     {$order}"
                 );
+                $stmt->execute($likeParams);
                 return $stmt->fetchAll();
             } catch (PDOException) {
-                $stmt = $pdo->query(
+                $stmt = $pdo->prepare(
                     "SELECT DISTINCT u.*
                      FROM users u
                      LEFT JOIN user_roles ur ON ur.user_id = u.id
                      LEFT JOIN roles r ON r.id = ur.role_id
-                     WHERE u.role IN ('CUSTOMER_SERVICE', 'EXAMINER', 'ADMIN', 'BOSS')
-                        OR (r.id IS NOT NULL AND (r.code IS NULL OR r.code = '' OR r.code != 'STAFF'))
-                     ORDER BY u.created_at DESC"
+                     WHERE (
+                            u.role IN ('CUSTOMER_SERVICE', 'EXAMINER', 'ADMIN', 'BOSS')
+                         OR (r.id IS NOT NULL AND (r.code IS NULL OR r.code = '' OR r.code != 'STAFF'))
+                       )
+                       {$searchSql}
+                     {$order}"
                 );
+                $stmt->execute($likeParams);
                 return $stmt->fetchAll();
             }
         }
-        $stmt = $pdo->query(
-            "SELECT * FROM users WHERE role IN ('CUSTOMER_SERVICE', 'EXAMINER') ORDER BY created_at DESC"
+        $stmt = $pdo->prepare(
+            "SELECT u.* FROM users u
+             WHERE u.role IN ('CUSTOMER_SERVICE', 'EXAMINER')
+             {$searchSql}
+             {$order}"
         );
+        $stmt->execute($likeParams);
         return $stmt->fetchAll();
     }
 
