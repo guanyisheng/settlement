@@ -11,7 +11,7 @@ require_once __DIR__ . '/../includes/OrderService.php';
 require_once __DIR__ . '/../includes/SettlementService.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
-Auth::requireStaff();
+Auth::requireReport();
 
 $pdo = Database::getConnection();
 $customers = CustomerService::getAll($pdo, true);
@@ -22,9 +22,14 @@ $success = flash('success');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $result = OrderService::create($pdo, Auth::id(), $_POST, $_FILES['screenshots'] ?? null);
+        // 报单人：默认本人；老板代报时可传 staff_id（需有打手管理权限）
+        $staffId = Auth::id();
+        if (!empty($_POST['staff_id']) && Auth::can('staff.manage')) {
+            $staffId = (int) $_POST['staff_id'];
+        }
+        $result = OrderService::create($pdo, $staffId, $_POST, $_FILES['screenshots'] ?? null);
         flash('success', '报单提交成功，微信订单号：' . $result['wechat_order_no']);
-        redirect('/staff/index.php');
+        redirect(Auth::canAccessAdmin() ? '/admin/orders.php' : '/staff/index.php');
     } catch (Throwable $e) {
         $error = $e->getMessage();
     }

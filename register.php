@@ -19,7 +19,7 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo = Database::getConnection();
-        UserService::registerStaff($pdo, $_POST, $_FILES['photo'] ?? null);
+        UserService::registerStaff($pdo, $_POST, $_FILES['photos'] ?? ($_FILES['photo'] ?? null));
         flash('success', '注册申请已提交，请等待老板审核通过后登录');
         redirect('/login.php');
     } catch (Throwable $e) {
@@ -66,10 +66,10 @@ $bodyClass = 'login-body';
                            value="<?= e($_POST['nickname'] ?? '') ?>">
                 </div>
                 <div class="form-group">
-                    <label>毛照 <span class="required-mark">*</span></label>
-                    <input type="file" name="photo" class="form-control file-input" required
+                    <label>毛照（选填，可多张）</label>
+                    <input type="file" name="photos[]" class="form-control file-input" multiple
                            accept="image/jpeg,image/png,image/webp">
-                    <p class="order-no-hint">支持 JPG/PNG/WEBP，最大 5MB</p>
+                    <p class="order-no-hint">支持 JPG/PNG/WEBP，最大 5MB/张；也可注册后再上传</p>
                 </div>
                 <div class="form-group">
                     <label>密码</label>

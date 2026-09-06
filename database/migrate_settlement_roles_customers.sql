@@ -1,7 +1,6 @@
 -- 结算金额、考官角色、客户预存余额
 -- 若某步报 Duplicate column，跳过该步继续
 
-USE settlement;
 
 -- 1. 考官角色（若已含 EXAMINER 会报错，可忽略）
 ALTER TABLE users

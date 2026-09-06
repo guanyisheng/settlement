@@ -108,13 +108,9 @@ CREATE TABLE IF NOT EXISTS withdrawals (
     FOREIGN KEY (processed_by) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 老板账号 (密码: boss123)
+-- 初始老板 (密码: boss123) — 老板即最高权限，不再单独设管理员
 INSERT INTO users (username, password, nickname, role, status) VALUES
 ('boss1', '$2y$12$yLWb1cY2eKv/ZVxs0C39Luu4KURiamKikLFx1IpfaIi8vHNJS3FkW', '老板', 'BOSS', 1);
-
--- 初始管理员 (密码: admin123)
-INSERT INTO users (username, password, nickname, role, status) VALUES
-('admin', '$2y$12$MsvpMvWEmHzNkzUXovzpuu.kjbNQY1Tec396LRm6J0xg0J.fvtG1m', '系统管理员', 'ADMIN', 1);
 
 -- 示例打手 (密码: staff123)
 INSERT INTO users (username, password, nickname, role, status) VALUES

@@ -72,7 +72,10 @@ class OrderService
         $amount = round($unitPrice * $quantity, 2);
 
         require_once __DIR__ . '/SettlementService.php';
-        $staffAmount = SettlementService::calcStaffAmount($amount);
+        $rates = SettlementService::rates();
+        $rateA = (float) $rates['rate_a'];
+        $rateB = (float) $rates['rate_b'];
+        $staffAmount = SettlementService::calcStaffAmount($amount, $rateA, $rateB);
 
         $orderNo = generateNo('ORD');
 
@@ -81,14 +84,29 @@ class OrderService
         $screenshotKeys = $storage->uploadScreenshots($uploadedFiles, $wechatOrderNo);
         $screenshotKey = encodeScreenshotKeys($screenshotKeys);
 
-        $stmt = $pdo->prepare(
-            'INSERT INTO orders (order_no, wechat_order_no, screenshot_key, staff_id, customer_id, business_type_id, quantity, unit_price, amount, staff_amount, start_time, end_time, remark, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        );
-        $stmt->execute([
-            $orderNo, $wechatOrderNo, $screenshotKey, $staffId, $customerId, $businessTypeId,
-            $quantity, $unitPrice, $amount, $staffAmount, $startTime, $endTime, $remark, 'PENDING',
-        ]);
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO orders (order_no, wechat_order_no, screenshot_key, staff_id, customer_id, business_type_id, quantity, unit_price, amount, staff_amount, rate_a, rate_b, start_time, end_time, remark, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([
+                $orderNo, $wechatOrderNo, $screenshotKey, $staffId, $customerId, $businessTypeId,
+                $quantity, $unitPrice, $amount, $staffAmount, $rateA, $rateB, $startTime, $endTime, $remark, 'PENDING',
+            ]);
+        } catch (PDOException $e) {
+            // 未跑 migration 时无 rate_a/rate_b 列
+            if (!str_contains($e->getMessage(), 'rate_a') && !str_contains($e->getMessage(), 'Unknown column')) {
+                throw $e;
+            }
+            $stmt = $pdo->prepare(
+                'INSERT INTO orders (order_no, wechat_order_no, screenshot_key, staff_id, customer_id, business_type_id, quantity, unit_price, amount, staff_amount, start_time, end_time, remark, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $stmt->execute([
+                $orderNo, $wechatOrderNo, $screenshotKey, $staffId, $customerId, $businessTypeId,
+                $quantity, $unitPrice, $amount, $staffAmount, $startTime, $endTime, $remark, 'PENDING',
+            ]);
+        }
 
         return [
             'id'              => (int) $pdo->lastInsertId(),
@@ -115,9 +133,13 @@ class OrderService
             }
 
             require_once __DIR__ . '/SettlementService.php';
-            $staffAmount = $order['staff_amount'] !== null
-                ? (float) $order['staff_amount']
-                : SettlementService::calcStaffAmount((float) $order['amount']);
+            if ($order['staff_amount'] !== null) {
+                $staffAmount = (float) $order['staff_amount'];
+            } else {
+                $rateA = isset($order['rate_a']) && $order['rate_a'] !== null ? (float) $order['rate_a'] : null;
+                $rateB = isset($order['rate_b']) && $order['rate_b'] !== null ? (float) $order['rate_b'] : null;
+                $staffAmount = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
+            }
 
             $stmt = $pdo->prepare('SELECT * FROM customers WHERE id = ? FOR UPDATE');
             $stmt->execute([(int) $order['customer_id']]);
@@ -198,6 +220,13 @@ class OrderService
         $where = ['1=1'];
         $params = [];
 
+        // 软删过滤（列可能不存在）
+        try {
+            $pdo->query('SELECT deleted_at FROM orders LIMIT 0');
+            $where[] = 'o.deleted_at IS NULL';
+        } catch (PDOException) {
+        }
+
         if (!empty($filters['staff_id'])) {
             $where[] = 'o.staff_id = ?';
             $params[] = (int) $filters['staff_id'];
@@ -222,6 +251,12 @@ class OrderService
             $where[] = 'DATE(o.created_at) <= ?';
             $params[] = $filters['date_to'];
         }
+        if (!empty($filters['scope_sql'])) {
+            $where[] = '(' . $filters['scope_sql'] . ')';
+            foreach ($filters['scope_params'] ?? [] as $p) {
+                $params[] = $p;
+            }
+        }
 
         $sql = "SELECT o.*, c.name AS customer_name, b.name AS business_type_name, u.nickname AS staff_name
                 FROM orders o
@@ -235,6 +270,27 @@ class OrderService
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll();
+    }
+
+    public static function softDelete(PDO $pdo, int $orderId): void
+    {
+        $stmt = $pdo->prepare('UPDATE orders SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL');
+        $stmt->execute([$orderId]);
+        if ($stmt->rowCount() === 0) {
+            throw new RuntimeException('订单不存在或已删除');
+        }
+    }
+
+    public static function softDeleteMany(PDO $pdo, array $ids): int
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if ($ids === []) {
+            return 0;
+        }
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("UPDATE orders SET deleted_at = NOW() WHERE id IN ({$in}) AND deleted_at IS NULL");
+        $stmt->execute($ids);
+        return $stmt->rowCount();
     }
 
     public static function getById(PDO $pdo, int $orderId): ?array

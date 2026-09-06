@@ -105,9 +105,6 @@ class UserService
         if ($password !== $confirm) {
             throw new InvalidArgumentException('两次输入的密码不一致');
         }
-        if ($photoFile === null || ($photoFile['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-            throw new InvalidArgumentException('请上传毛照');
-        }
 
         $id = self::createUser($pdo, [
             'username' => $username,
@@ -115,8 +112,18 @@ class UserService
             'nickname' => trim($data['nickname'] ?? ''),
         ], 'STAFF', Auth::STATUS_PENDING);
 
-        if ($photoFile !== null) {
-            self::saveStaffPhoto($pdo, $id, $username, $photoFile);
+        if ($photoFile !== null && ($photoFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            require_once __DIR__ . '/StaffPhotoService.php';
+            require_once __DIR__ . '/PermissionService.php';
+            if (PermissionService::isRbacReady($pdo)) {
+                try {
+                    StaffPhotoService::uploadMany($pdo, $id, $id, $photoFile, $username);
+                } catch (Throwable) {
+                    self::saveStaffPhoto($pdo, $id, $username, $photoFile);
+                }
+            } else {
+                self::saveStaffPhoto($pdo, $id, $username, $photoFile);
+            }
         }
 
         return $id;
@@ -188,24 +195,33 @@ class UserService
 
     // ─── 员工（客服） ───────────────────────────────────
 
-    public static function getEmployeeList(PDO $pdo): array
-    {
-        $stmt = $pdo->query(
-            "SELECT * FROM users WHERE role IN ('CUSTOMER_SERVICE', 'EXAMINER') ORDER BY created_at DESC"
-        );
-        return $stmt->fetchAll();
-    }
-
-    public static function getEmployeeById(PDO $pdo, int $id): ?array
-    {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role IN ('CUSTOMER_SERVICE', 'EXAMINER')");
-        $stmt->execute([$id]);
-        $row = $stmt->fetch();
-        return $row ?: null;
-    }
-
     public static function createEmployee(PDO $pdo, array $data): int
     {
+        $roleIds = $data['role_ids'] ?? [];
+        if (!is_array($roleIds)) {
+            $roleIds = [];
+        }
+        $roleIds = array_map('intval', $roleIds);
+
+        require_once __DIR__ . '/PermissionService.php';
+        require_once __DIR__ . '/RoleService.php';
+
+        if (PermissionService::isRbacReady($pdo) && $roleIds !== []) {
+            $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
+            $stmt = $pdo->prepare(
+                "SELECT code FROM roles WHERE id IN ({$placeholders}) AND code IS NOT NULL
+                 AND code NOT IN ('STAFF','BOSS','ADMIN') ORDER BY id ASC LIMIT 1"
+            );
+            $stmt->execute($roleIds);
+            $legacy = $stmt->fetchColumn() ?: 'CUSTOMER_SERVICE';
+            $data['role_ids'] = $roleIds;
+            return self::createUser($pdo, $data, $legacy);
+        }
+
+        if (PermissionService::isRbacReady($pdo) && $roleIds === []) {
+            throw new InvalidArgumentException('请至少勾选一个角色');
+        }
+
         $role = $data['role'] ?? 'CUSTOMER_SERVICE';
         if (!in_array($role, ['CUSTOMER_SERVICE', 'EXAMINER'], true)) {
             throw new InvalidArgumentException('无效的员工角色');
@@ -217,9 +233,77 @@ class UserService
     {
         $user = self::getEmployeeById($pdo, $id);
         if (!$user) {
-            throw new RuntimeException('员工不存在');
+            // 兼容：多角色用户可能 legacy role 不是 CS/EXAMINER
+            $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ?');
+            $stmt->execute([$id]);
+            $user = $stmt->fetch();
+            if (!$user) {
+                throw new RuntimeException('员工不存在');
+            }
         }
         self::updateUser($pdo, $id, $user['role'], $data);
+
+        require_once __DIR__ . '/PermissionService.php';
+        require_once __DIR__ . '/RoleService.php';
+        if (PermissionService::isRbacReady($pdo) && isset($data['role_ids']) && is_array($data['role_ids'])) {
+            RoleService::setUserRoles($pdo, $id, $data['role_ids']);
+        }
+    }
+
+    public static function getEmployeeList(PDO $pdo): array
+    {
+        require_once __DIR__ . '/PermissionService.php';
+        if (PermissionService::isRbacReady($pdo)) {
+            try {
+                // 含任意非打手角色的用户（含自定义角色如财务）
+                $stmt = $pdo->query(
+                    "SELECT DISTINCT u.*
+                     FROM users u
+                     LEFT JOIN user_roles ur ON ur.user_id = u.id
+                     LEFT JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL AND r.status = 1
+                     WHERE u.deleted_at IS NULL
+                       AND (
+                            u.role IN ('CUSTOMER_SERVICE', 'EXAMINER', 'ADMIN', 'BOSS')
+                         OR (r.id IS NOT NULL AND (r.code IS NULL OR r.code = '' OR r.code NOT IN ('STAFF')))
+                       )
+                       AND NOT (
+                            u.role = 'STAFF'
+                            AND NOT EXISTS (
+                                SELECT 1 FROM user_roles ur2
+                                JOIN roles r2 ON r2.id = ur2.role_id
+                                WHERE ur2.user_id = u.id
+                                  AND r2.deleted_at IS NULL AND r2.status = 1
+                                  AND (r2.code IS NULL OR r2.code = '' OR r2.code != 'STAFF')
+                            )
+                       )
+                     ORDER BY u.created_at DESC"
+                );
+                return $stmt->fetchAll();
+            } catch (PDOException) {
+                $stmt = $pdo->query(
+                    "SELECT DISTINCT u.*
+                     FROM users u
+                     LEFT JOIN user_roles ur ON ur.user_id = u.id
+                     LEFT JOIN roles r ON r.id = ur.role_id
+                     WHERE u.role IN ('CUSTOMER_SERVICE', 'EXAMINER', 'ADMIN', 'BOSS')
+                        OR (r.id IS NOT NULL AND (r.code IS NULL OR r.code = '' OR r.code != 'STAFF'))
+                     ORDER BY u.created_at DESC"
+                );
+                return $stmt->fetchAll();
+            }
+        }
+        $stmt = $pdo->query(
+            "SELECT * FROM users WHERE role IN ('CUSTOMER_SERVICE', 'EXAMINER') ORDER BY created_at DESC"
+        );
+        return $stmt->fetchAll();
+    }
+
+    public static function getEmployeeById(PDO $pdo, int $id): ?array
+    {
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        return $row ?: null;
     }
 
     public static function resetEmployeePassword(PDO $pdo, int $id, string $password): void
@@ -314,7 +398,18 @@ class UserService
             'INSERT INTO users (username, password, nickname, role, status) VALUES (?, ?, ?, ?, ?)'
         );
         $stmt->execute([$username, password_hash($password, PASSWORD_DEFAULT), $nickname ?: $username, $role, $status]);
-        return (int) $pdo->lastInsertId();
+        $userId = (int) $pdo->lastInsertId();
+
+        require_once __DIR__ . '/RoleService.php';
+        require_once __DIR__ . '/PermissionService.php';
+        if (PermissionService::isRbacReady($pdo)) {
+            RoleService::ensureUserHasLegacyRole($pdo, $userId, $role);
+            if (!empty($data['role_ids']) && is_array($data['role_ids'])) {
+                RoleService::setUserRoles($pdo, $userId, $data['role_ids']);
+            }
+        }
+
+        return $userId;
     }
 
     private static function updateUser(PDO $pdo, int $id, string $role, array $data): void

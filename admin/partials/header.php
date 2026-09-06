@@ -30,6 +30,11 @@ $isBoss = Auth::isBoss();
                 <?= svgIcon('dashboard') ?><span>工作台</span>
             </a>
             <?php endif; ?>
+            <?php if (Auth::can('report.create')): ?>
+            <a href="/staff/report.php" class="nav-item <?= $currentPage === 'report' ? 'active' : '' ?>">
+                <?= svgIcon('report') ?><span>报单</span>
+            </a>
+            <?php endif; ?>
             <?php if (Auth::canAccessPage('orders')): ?>
             <a href="/admin/orders.php" class="nav-item <?= $currentPage === 'orders' ? 'active' : '' ?>">
                 <?= svgIcon('orders') ?><span>订单管理</span>
@@ -60,6 +65,16 @@ $isBoss = Auth::isBoss();
                 <?= svgIcon('staff') ?><span>打手管理</span>
             </a>
             <?php endif; ?>
+            <?php if (Auth::canAccessPage('roles')): ?>
+            <a href="/admin/roles.php" class="nav-item <?= $currentPage === 'roles' ? 'active' : '' ?>">
+                <?= svgIcon('employees') ?><span>角色权限</span>
+            </a>
+            <?php endif; ?>
+            <?php if (Auth::canAccessPage('rates')): ?>
+            <a href="/admin/rates.php" class="nav-item <?= $currentPage === 'rates' ? 'active' : '' ?>">
+                <?= svgIcon('settings') ?><span>结算倍率</span>
+            </a>
+            <?php endif; ?>
             <?php if (Auth::canAccessPage('settings')): ?>
             <a href="/admin/settings.php" class="nav-item <?= $currentPage === 'settings' ? 'active' : '' ?>">
                 <?= svgIcon('settings') ?><span>系统设置</span>
@@ -86,7 +101,7 @@ $isBoss = Auth::isBoss();
         <header class="topbar">
             <div class="topbar-title"><?= e($pageTitle) ?></div>
             <div class="topbar-user">
-                <span><?= e($user['nickname'] ?? '') ?> (<?= roleLabel($user['role'] ?? '') ?>)</span>
+                <span><?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
                 <a href="/admin/password.php" class="topbar-link">
                     <?= svgIcon('password', 'topbar-icon') ?><span>改密</span>
                 </a>

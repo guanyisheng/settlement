@@ -1,5 +1,5 @@
 -- 系统设置表（已有库升级）
-USE settlement;
+-- 请先在 phpMyAdmin 选中你的业务库再执行
 
 CREATE TABLE IF NOT EXISTS system_settings (
     setting_key VARCHAR(100) PRIMARY KEY,

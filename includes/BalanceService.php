@@ -9,7 +9,8 @@ class BalanceService
 {
     private static function staffAmountExpr(): string
     {
-        return 'COALESCE(staff_amount, ROUND(amount * 0.8 * 0.5, 2))';
+        // 优先用落库的 staff_amount；勿用当前全局倍率重算历史单
+        return 'COALESCE(staff_amount, amount)';
     }
 
     /**

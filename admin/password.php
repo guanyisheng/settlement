@@ -43,7 +43,7 @@ require __DIR__ . '/partials/header.php';
     <div class="card-header"><h2>修改密码</h2></div>
     <div class="card-body">
         <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
-            当前账号：<?= e($user['nickname']) ?> (<?= roleLabel($user['role']) ?>)
+            当前账号：<?= e($user['nickname']) ?> (<?= e(Auth::roleDisplay()) ?>)
         </p>
         <form method="post">
             <div class="form-group" style="margin-bottom:16px">

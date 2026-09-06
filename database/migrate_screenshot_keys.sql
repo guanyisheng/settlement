@@ -2,7 +2,6 @@
 -- 若报错 Unknown column 'screenshot_key'，说明从未添加过该列，执行「步骤1」
 -- 若报错 Duplicate column name，说明已有 VARCHAR 版，改执行「步骤2」
 
-USE settlement;
 
 -- 步骤1：首次添加（大多数情况执行这句）
 ALTER TABLE orders

@@ -111,8 +111,7 @@ function roleLabel(string $role): string
         'STAFF'            => '打手',
         'CUSTOMER_SERVICE' => '客服',
         'EXAMINER'         => '考官',
-        'BOSS'             => '老板',
-        'ADMIN'            => '管理员',
+        'BOSS', 'ADMIN'    => '老板',
         default            => $role,
     };
 }

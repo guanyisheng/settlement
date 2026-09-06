@@ -2,7 +2,6 @@
 -- 默认密码: mima1234
 -- 执行前请先运行 migrate_staff_profile.sql（新库已含字段可跳过）
 
-USE settlement;
 
 SET @pwd = '$2y$12$1BY5MHgzgxiqdWtc1FDp2uRe/IR5AQ/GPFrrZBTmL4BN1GxU5YqGG';
 

@@ -82,6 +82,13 @@ class SettingsService
         self::$loaded = true;
     }
 
+    public static function reload(PDO $pdo): void
+    {
+        self::$loaded = false;
+        self::$cache = [];
+        self::load($pdo);
+    }
+
     /** @param array<string, string> $pairs */
     public static function setMany(PDO $pdo, array $pairs): void
     {
