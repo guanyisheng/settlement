@@ -97,6 +97,11 @@ $isBoss = Auth::isBoss();
             <div class="topbar-title"><?= e($pageTitle) ?></div>
             <div class="topbar-user">
                 <span><?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
+                <?php if (Auth::needsPortalChoice()): ?>
+                <a href="/choose_portal.php" class="topbar-link" onclick="return true;">
+                    <span>切换入口</span>
+                </a>
+                <?php endif; ?>
                 <a href="/admin/password.php" class="topbar-link">
                     <?= svgIcon('password', 'topbar-icon') ?><span>改密</span>
                 </a>

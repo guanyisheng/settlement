@@ -132,6 +132,7 @@ class Auth
     public static function logout(): void
     {
         self::startSession();
+        self::clearPortal();
         $_SESSION = [];
         self::applyRememberCookies(false);
         if (ini_get('session.use_cookies')) {
@@ -385,12 +386,73 @@ class Auth
         return false;
     }
 
+    public static function canAccessStaffPortal(): bool
+    {
+        if (!self::check()) {
+            return false;
+        }
+        if (self::isStaff() || self::role() === 'STAFF') {
+            return true;
+        }
+        foreach (self::roles() as $r) {
+            if (($r['code'] ?? '') === 'STAFF') {
+                return true;
+            }
+        }
+        // 客服/老板等有报单权限时也可进打手端
+        return self::can('report.create');
+    }
+
+    /** 同时具备管理端与打手端入口时，需用户主动选择 */
+    public static function needsPortalChoice(): bool
+    {
+        return self::canAccessAdmin() && self::canAccessStaffPortal();
+    }
+
+    public static function portal(): ?string
+    {
+        self::startSession();
+        $portal = $_SESSION['portal'] ?? null;
+        return in_array($portal, ['staff', 'admin'], true) ? $portal : null;
+    }
+
+    public static function setPortal(string $portal): void
+    {
+        self::startSession();
+        if (!in_array($portal, ['staff', 'admin'], true)) {
+            return;
+        }
+        $_SESSION['portal'] = $portal;
+    }
+
+    public static function clearPortal(): void
+    {
+        self::startSession();
+        unset($_SESSION['portal']);
+    }
+
     public static function homeUrl(): string
     {
-        if (self::canAccessAdmin()) {
+        if (!self::check()) {
+            return self::LOGIN_URL;
+        }
+        $canAdmin = self::canAccessAdmin();
+        $canStaff = self::canAccessStaffPortal();
+
+        if ($canAdmin && $canStaff) {
+            $portal = self::portal();
+            if ($portal === 'admin') {
+                return self::adminHomeUrl();
+            }
+            if ($portal === 'staff') {
+                return '/staff/index.php';
+            }
+            return '/choose_portal.php';
+        }
+        if ($canAdmin) {
             return self::adminHomeUrl();
         }
-        if (self::check()) {
+        if ($canStaff) {
             return '/staff/index.php';
         }
         return self::LOGIN_URL;
@@ -421,13 +483,29 @@ class Auth
         return '/staff/index.php';
     }
 
-    /** 登录后直接进：有后台权限 → 后台；否则打手端。双角色合集权限已在 session */
+    /** 登录后：单入口直达；双入口则先选角色界面 */
     public static function redirectHome(): void
     {
-        if (self::canAccessAdmin()) {
+        if (!self::check()) {
+            redirect(self::LOGIN_URL);
+        }
+        $canAdmin = self::canAccessAdmin();
+        $canStaff = self::canAccessStaffPortal();
+
+        if ($canAdmin && $canStaff) {
+            $portal = self::portal();
+            if ($portal === 'admin') {
+                redirect(self::adminHomeUrl());
+            }
+            if ($portal === 'staff') {
+                redirect('/staff/index.php');
+            }
+            redirect('/choose_portal.php');
+        }
+        if ($canAdmin) {
             redirect(self::adminHomeUrl());
         }
-        if (self::check()) {
+        if ($canStaff) {
             redirect('/staff/index.php');
         }
         redirect(self::LOGIN_URL);

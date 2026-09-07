@@ -68,7 +68,9 @@ require __DIR__ . '/partials/head.php';
                     <label>选择客户 <span class="required-mark">*</span></label>
                     <input type="text" id="customerSearch" class="form-control search-select-input"
                            placeholder="输入关键字搜索客户" autocomplete="off">
-                    <select name="customer_id" id="customerSelect" class="form-control search-select-native" required>
+                    <input type="hidden" name="customer_id" id="customerId"
+                           value="<?= e((string) ($_POST['customer_id'] ?? '')) ?>">
+                    <select id="customerSelect" class="form-control search-select-native" size="6" required>
                         <option value="">请选择客户</option>
                         <?php foreach ($customers as $c): ?>
                             <option value="<?= $c['id'] ?>" <?= (($_POST['customer_id'] ?? '') == $c['id']) ? 'selected' : '' ?>><?= e($c['name']) ?></option>
@@ -80,7 +82,9 @@ require __DIR__ . '/partials/head.php';
                     <label>业务类型 <span class="required-mark">*</span></label>
                     <input type="text" id="businessTypeSearch" class="form-control search-select-input"
                            placeholder="输入关键字搜索业务类型" autocomplete="off">
-                    <select name="business_type_id" id="businessType" class="form-control search-select-native" required>
+                    <input type="hidden" name="business_type_id" id="businessTypeId"
+                           value="<?= e((string) ($_POST['business_type_id'] ?? '')) ?>">
+                    <select id="businessType" class="form-control search-select-native" size="6" required>
                         <option value="" data-price="0">请选择业务类型</option>
                         <?php foreach ($businessTypes as $bt): ?>
                             <option value="<?= $bt['id'] ?>" data-price="<?= $bt['unit_price'] ?>"
@@ -163,6 +167,7 @@ function updateAmount() {
     document.getElementById('previewStaffAmount').textContent = '¥' + Number(staffAmount).toLocaleString('zh-CN', {minimumFractionDigits: 2});
 }
 document.getElementById('businessType').addEventListener('change', updateAmount);
+document.getElementById('businessType').addEventListener('searchselect:change', updateAmount);
 document.getElementById('quantity').addEventListener('input', updateAmount);
 updateAmount();
 
@@ -188,7 +193,7 @@ document.getElementById('screenshots')?.addEventListener('change', function(e) {
 </script>
 <script src="/staff/assets/js/search-select.js"></script>
 <script>
-initSearchSelect('customerSearch', 'customerSelect');
-initSearchSelect('businessTypeSearch', 'businessType');
+initSearchSelect('customerSearch', 'customerSelect', 'customerId');
+initSearchSelect('businessTypeSearch', 'businessType', 'businessTypeId');
 </script>
 <?php require __DIR__ . '/partials/foot.php'; ?>

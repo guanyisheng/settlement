@@ -424,13 +424,26 @@ a { color: var(--primary-light); text-decoration: none; }
 }
 
 .search-select-native {
-    max-height: 120px;
+    display: block;
+    width: 100%;
+    min-height: 132px;
+    max-height: 180px;
     overflow-y: auto;
     background: var(--bg-elevated) !important;
     border: 1px solid var(--border) !important;
     border-radius: var(--radius-sm) !important;
-    padding: 8px !important;
+    padding: 4px !important;
     font-size: 14px !important;
+}
+
+.search-select-native option {
+    padding: 10px 12px;
+    border-radius: 8px;
+}
+
+.search-select-native option:checked {
+    background: var(--primary-bg);
+    color: var(--primary-light);
 }
 
 .order-screenshot-links {
@@ -1160,6 +1173,56 @@ body.login-body::after {
     height: 18px;
     accent-color: var(--primary);
     flex-shrink: 0;
+}
+
+.portal-card .alert {
+    margin-bottom: 16px;
+}
+
+.portal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.portal-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+    padding: 18px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
+    background: var(--bg-elevated);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
+}
+
+.portal-option:active {
+    transform: scale(0.98);
+}
+
+.portal-option-title {
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.portal-option-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.portal-option-admin {
+    border-color: rgba(36, 104, 232, 0.35);
+    background: var(--primary-bg);
+}
+
+.portal-option-admin .portal-option-title {
+    color: var(--primary-light);
 }
 
 .login-card .btn {
