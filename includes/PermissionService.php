@@ -122,18 +122,21 @@ class PermissionService
         if (!self::isRbacReady($pdo)) {
             return false;
         }
-        // 有任一非纯打手端权限即可进后台
+        // 纯打手角色永远进手机端，不进 PC 后台（避免 honor.manage / dashboard.view 误判）
+        if (self::isOnlyStaffPortal($pdo, $userId)) {
+            return false;
+        }
+        // 有任一真正后台权限即可进后台（不含打手自助：honor.manage / report 等）
         $adminPerms = [
             'order.review', 'withdrawal.process', 'registration.review',
             'staff.manage', 'staff.view', 'customer.view', 'customer.manage',
             'business.view', 'business.manage', 'stats.view', 'board.view',
             'user.view', 'user.manage', 'role.view', 'role.manage',
-            'rate.manage', 'settings.manage', 'photo.download', 'honor.manage',
+            'rate.manage', 'settings.manage', 'photo.download',
             'order.delete', 'user.delete', 'permission.manage',
         ];
         return self::userCanAny($pdo, $userId, $adminPerms)
-            || self::userCan($pdo, $userId, 'dashboard.view')
-                && !self::isOnlyStaffPortal($pdo, $userId);
+            || self::userCan($pdo, $userId, 'dashboard.view');
     }
 
     private static function isOnlyStaffPortal(PDO $pdo, int $userId): bool
