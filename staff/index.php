@@ -72,13 +72,30 @@ require __DIR__ . '/partials/head.php';
         <?php else: ?>
             <div class="order-list">
                 <?php foreach ($orders as $order): ?>
+                <?php
+                    $myShare = OrderService::shareForStaff($order, (int) $staffId);
+                    $totalPay = (float) ($order['staff_amount'] ?? SettlementService::calcStaffAmount((float) $order['amount']));
+                    $isCo = (int) ($order['co_staff_id'] ?? 0) === (int) $staffId
+                        && (int) ($order['staff_id'] ?? 0) !== (int) $staffId;
+                    $hasCo = (int) ($order['co_staff_id'] ?? 0) > 0;
+                ?>
                 <article class="order-card <?= orderStatusClass($order['status']) ?>">
                     <div class="order-card-no" title="微信订单编号"><?= e($order['wechat_order_no'] ?? $order['order_no']) ?></div>
                     <div class="order-card-top">
                         <div class="order-card-title"><?= e($order['customer_name']) ?> · <?= e($order['business_type_name']) ?></div>
                         <span class="status-badge <?= orderStatusClass($order['status']) ?>"><?= orderStatusLabel($order['status']) ?></span>
                     </div>
-                    <div class="order-card-amount"><?= formatMoney($order['staff_amount'] ?? SettlementService::calcStaffAmount((float) $order['amount'])) ?></div>
+                    <?php if ($hasCo): ?>
+                        <div class="order-role-tag <?= $isCo ? '' : 'is-primary' ?>">
+                            <?= $isCo
+                                ? ('附加打手 · 主打手 ' . e($order['staff_name'] ?? ''))
+                                : ('主报单 · 附加 ' . e($order['co_staff_name'] ?? '')) ?>
+                        </div>
+                    <?php endif; ?>
+                    <div class="order-card-amount"><?= formatMoney($myShare) ?></div>
+                    <?php if ($hasCo): ?>
+                        <div class="order-share-hint">本单合计 <?= formatMoney($totalPay) ?> · 两人平分后你的份额</div>
+                    <?php endif; ?>
                     <div class="order-card-meta">
                         <div class="meta-item">
                             <span class="meta-label">报单时间</span>

@@ -15,7 +15,7 @@ $index = max(0, (int) ($_GET['i'] ?? 0));
 $pdo = Database::getConnection();
 $order = OrderService::getById($pdo, $orderId);
 
-if (!$order || (int) $order['staff_id'] !== Auth::id()) {
+if (!$order || !OrderService::isParticipant($order, (int) Auth::id())) {
     http_response_code(404);
     exit('截图不存在');
 }
