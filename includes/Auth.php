@@ -225,6 +225,10 @@ class Auth
         if (!self::check()) {
             return false;
         }
+        // 纯打手只进手机端工作台，禁止落到 PC 管理后台
+        if (self::isStaff()) {
+            return false;
+        }
         try {
             $pdo = Database::getConnection();
             if (PermissionService::isRbacReady($pdo) && self::id()) {
