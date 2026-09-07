@@ -1144,6 +1144,24 @@ body.login-body::after {
     box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
+.login-remember {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0 16px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.login-remember input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    flex-shrink: 0;
+}
+
 .login-card .btn {
     margin-top: 8px;
 }

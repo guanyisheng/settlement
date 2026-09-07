@@ -36,14 +36,37 @@ class Auth
 
     public const LOGIN_URL = '/login.php';
 
+    /** 勾选「记住登录」后的会话保留时长（秒） */
+    public const REMEMBER_SECONDS = 2592000; // 30 天
+
+    private const REMEMBER_COOKIE = 'settlement_remember';
+
     public static function startSession(): void
     {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
+        if (session_status() !== PHP_SESSION_NONE) {
+            return;
+        }
+
+        $remember = !empty($_COOKIE[self::REMEMBER_COOKIE]);
+        $lifetime = $remember ? self::REMEMBER_SECONDS : 0;
+        // 服务端会话文件至少保留 30 天，避免 cookie 还在、session 已被 GC
+        ini_set('session.gc_maxlifetime', (string) self::REMEMBER_SECONDS);
+        session_set_cookie_params([
+            'lifetime' => $lifetime,
+            'path'     => '/',
+            'secure'   => self::cookieSecure(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+        session_start();
+
+        // 已登录且勾选过记住：滑动续期
+        if (!empty($_SESSION['user']) && $remember) {
+            self::applyRememberCookies(true);
         }
     }
 
-    public static function login(array $user): void
+    public static function login(array $user, bool $remember = false): void
     {
         self::startSession();
         session_regenerate_id(true);
@@ -80,6 +103,8 @@ class Auth
             'roles'       => $roles,
             'permissions' => $permissions,
         ];
+        $_SESSION['remember'] = $remember;
+        self::applyRememberCookies($remember);
     }
 
     /** 资料变更后刷新会话中的展示信息 */
@@ -108,11 +133,54 @@ class Auth
     {
         self::startSession();
         $_SESSION = [];
+        self::applyRememberCookies(false);
         if (ini_get('session.use_cookies')) {
-            $params = session_get_cookie_params();
-            setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+            $secure = self::cookieSecure();
+            setcookie(session_name(), '', [
+                'expires'  => time() - 42000,
+                'path'     => '/',
+                'secure'   => $secure,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
         }
         session_destroy();
+    }
+
+    private static function cookieSecure(): bool
+    {
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+            return true;
+        }
+        return (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+    }
+
+    /** 同步会话 Cookie 与记住标记 Cookie */
+    private static function applyRememberCookies(bool $remember): void
+    {
+        $secure = self::cookieSecure();
+        $expires = $remember ? time() + self::REMEMBER_SECONDS : time() - 42000;
+
+        setcookie(self::REMEMBER_COOKIE, $remember ? '1' : '', [
+            'expires'  => $expires,
+            'path'     => '/',
+            'secure'   => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return;
+        }
+
+        // expires=0 表示浏览器会话级 Cookie（关浏览器即失效）
+        setcookie(session_name(), session_id(), [
+            'expires'  => $remember ? $expires : 0,
+            'path'     => '/',
+            'secure'   => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
 
     public static function user(): ?array

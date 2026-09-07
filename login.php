@@ -18,10 +18,11 @@ $success = flash('success');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
+    $remember = !empty($_POST['remember']);
 
     $user = Auth::attemptLogin($username, $password);
     if ($user['user']) {
-        Auth::login($user['user']);
+        Auth::login($user['user'], $remember);
         Auth::redirectHome();
     }
     $error = $user['error'] ?? '用户名或密码错误';
@@ -69,6 +70,11 @@ $bodyClass = 'login-body';
                     <input type="password" name="password" class="form-control" required
                            autocomplete="current-password" placeholder="请输入密码">
                 </div>
+                <label class="login-remember">
+                    <input type="checkbox" name="remember" value="1"
+                           <?= !empty($_POST['remember']) || $_SERVER['REQUEST_METHOD'] !== 'POST' ? 'checked' : '' ?>>
+                    <span>记住登录状态（30天）</span>
+                </label>
                 <button type="submit" class="btn btn-primary">登录</button>
             </form>
             <div class="auth-footer">
