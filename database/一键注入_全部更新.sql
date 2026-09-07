@@ -373,6 +373,32 @@ DELIMITER ;
 CALL qz_add_unique_wechat();
 DROP PROCEDURE IF EXISTS qz_add_unique_wechat;
 
+-- 附加打手索引
+DROP PROCEDURE IF EXISTS qz_add_co_staff_index;
+DELIMITER $$
+CREATE PROCEDURE qz_add_co_staff_index()
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'orders'
+          AND COLUMN_NAME = 'co_staff_id'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'orders'
+          AND INDEX_NAME = 'idx_co_staff_id'
+    ) THEN
+        SET @sql = 'ALTER TABLE orders ADD INDEX idx_co_staff_id (co_staff_id)';
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END$$
+DELIMITER ;
+CALL qz_add_co_staff_index();
+DROP PROCEDURE IF EXISTS qz_add_co_staff_index;
+
 -- 清理辅助过程
 DROP PROCEDURE IF EXISTS qz_add_column_if_missing;
 DROP PROCEDURE IF EXISTS qz_modify_column_if_exists;
