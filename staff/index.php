@@ -73,11 +73,14 @@ require __DIR__ . '/partials/head.php';
             <div class="order-list">
                 <?php foreach ($orders as $order): ?>
                 <?php
+                    $hasCo = (int) ($order['co_staff_id'] ?? 0) > 0;
                     $myShare = OrderService::shareForStaff($order, (int) $staffId);
-                    $totalPay = (float) ($order['staff_amount'] ?? SettlementService::calcStaffAmount((float) $order['amount']));
+                    $totalPay = (float) ($order['staff_amount'] ?? SettlementService::calcByCrewMode(
+                        (float) $order['amount'],
+                        $hasCo
+                    )['staff_amount']);
                     $isCo = (int) ($order['co_staff_id'] ?? 0) === (int) $staffId
                         && (int) ($order['staff_id'] ?? 0) !== (int) $staffId;
-                    $hasCo = (int) ($order['co_staff_id'] ?? 0) > 0;
                 ?>
                 <article class="order-card <?= orderStatusClass($order['status']) ?>">
                     <div class="order-card-no" title="微信订单编号"><?= e($order['wechat_order_no'] ?? $order['order_no']) ?></div>
