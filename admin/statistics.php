@@ -84,8 +84,9 @@ $rangeLinks = [
     <div class="card-body">
         <div class="stats-grid" style="margin:0">
             <div class="stat-card">
-                <div class="label">订单数</div>
+                <div class="label">订单数（已通过）</div>
                 <div class="value primary"><?= (int) $rangeMetrics['orders'] ?></div>
+                <div class="stat-sub">按审核日统计</div>
             </div>
             <div class="stat-card">
                 <div class="label">总流水</div>

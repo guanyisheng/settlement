@@ -584,7 +584,7 @@ class UserService
      * @param int|null $roleId 按角色筛选（roles.id）；null=全部
      * @return array<int, array>
      */
-    public static function getUnifiedUserList(PDO $pdo, ?string $keyword = null, ?int $roleId = null): array
+    public static function getUnifiedUserList(PDO $pdo, ?string $keyword = null, ?int $roleId = null, ?string $roleCode = null): array
     {
         $keyword = trim((string) $keyword);
         $params = [];
@@ -616,19 +616,11 @@ class UserService
                 ))';
                 $params[] = $roleId;
                 $params[] = $roleId;
-            } else {
-                $stmt = $pdo->prepare('SELECT code FROM roles WHERE id = ? LIMIT 1');
-                try {
-                    $stmt->execute([$roleId]);
-                    $code = (string) ($stmt->fetchColumn() ?: '');
-                } catch (PDOException) {
-                    $code = '';
-                }
-                if ($code !== '') {
-                    $where[] = 'u.role = ?';
-                    $params[] = $code === 'ADMIN' ? 'BOSS' : $code;
-                }
             }
+        } elseif ($roleCode !== null && $roleCode !== '') {
+            $code = $roleCode === 'ADMIN' ? 'BOSS' : $roleCode;
+            $where[] = 'u.role = ?';
+            $params[] = $code;
         }
 
         $sql = 'SELECT u.* FROM users u WHERE ' . implode(' AND ', $where)
@@ -677,7 +669,7 @@ class UserService
         $deposit = $deposit !== '' ? $deposit : null;
 
         $stmt = $pdo->prepare(
-            "UPDATE users SET hired_at = ?, examiner = ?, deposit = ? WHERE id = ? AND role = 'STAFF'"
+            'UPDATE users SET hired_at = ?, examiner = ?, deposit = ? WHERE id = ?'
         );
         $stmt->execute([$hiredAt, $examiner, $deposit, $id]);
 
@@ -737,9 +729,16 @@ class UserService
     {
         $nickname = trim($data['nickname'] ?? '');
         $status = isset($data['status']) ? (int) $data['status'] : 1;
+        $newRole = $role;
+        if (isset($data['role']) && is_string($data['role']) && $data['role'] !== '') {
+            $candidate = $data['role'] === 'ADMIN' ? 'BOSS' : $data['role'];
+            if (in_array($candidate, ['STAFF', 'CUSTOMER_SERVICE', 'EXAMINER', 'BOSS'], true)) {
+                $newRole = $candidate;
+            }
+        }
 
-        $stmt = $pdo->prepare('UPDATE users SET nickname = ?, status = ? WHERE id = ? AND role = ?');
-        $stmt->execute([$nickname, $status, $id, $role]);
+        $stmt = $pdo->prepare('UPDATE users SET nickname = ?, status = ?, role = ? WHERE id = ?');
+        $stmt->execute([$nickname, $status, $newRole, $id]);
     }
 
     private static function resetUserPassword(PDO $pdo, int $id, string $role, string $password): void

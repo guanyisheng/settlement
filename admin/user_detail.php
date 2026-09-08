@@ -92,18 +92,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (($detailUser['role'] ?? '') === 'STAFF') {
                     UserService::updateStaff($pdo, $userId, $_POST, null);
                 } else {
-                    // 多角色打手：legacy role 非 STAFF 时走员工更新 + 档案字段
                     UserService::updateEmployee($pdo, $userId, [
                         'nickname' => $_POST['nickname'] ?? '',
-                        'status'   => $_POST['status'] ?? $detailUser['status'],
+                        'status'   => $_POST['status'] ?? ($detailUser['status'] ?? 1),
                     ]);
                     $updateStaffProfileFields($pdo, $userId, $_POST);
+                }
+                // 打手向也可改角色（老板/有用户管理权限）
+                if ($rbac && (Auth::can('user.manage') || Auth::isBoss()) && isset($_POST['role_ids']) && is_array($_POST['role_ids'])) {
+                    if ($_POST['role_ids'] === []) {
+                        throw new InvalidArgumentException('请至少勾选一个角色');
+                    }
+                    RoleService::setUserRoles($pdo, $userId, $_POST['role_ids']);
                 }
             } else {
                 $payload = [
                     'nickname' => $_POST['nickname'] ?? '',
-                    'status'   => $_POST['status'] ?? $detailUser['status'],
+                    'status'   => $_POST['status'] ?? ($detailUser['status'] ?? 1),
                 ];
+                if (!$rbac && isset($_POST['role'])) {
+                    $payload['role'] = (string) $_POST['role'];
+                }
                 if ($rbac && $assignableRoles !== []) {
                     if (empty($_POST['role_ids']) || !is_array($_POST['role_ids'])) {
                         throw new InvalidArgumentException('请至少勾选一个角色');
@@ -266,6 +275,21 @@ require __DIR__ . '/partials/header.php';
                     </div>
                 </div>
                 <p style="font-size:12px;color:var(--text-muted);margin:8px 0 16px">注册时间：<?= formatDateTime($detailUser['created_at'] ?? null) ?></p>
+                <?php if ($rbac && $assignableRoles !== [] && (Auth::can('user.manage') || Auth::isBoss())): ?>
+                    <div class="form-group" style="margin-top:12px">
+                        <label>角色（可多选）</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
+                            <?php foreach ($assignableRoles as $r): ?>
+                                <?php $rid = (int) $r['id']; ?>
+                                <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:6px">
+                                    <input type="checkbox" name="role_ids[]" value="<?= $rid ?>"
+                                        <?= in_array($rid, $roleIds, true) ? 'checked' : '' ?>>
+                                    <span><?= e($r['name']) ?></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
                 <button type="submit" class="btn btn-primary">保存档案</button>
             </form>
         <?php else: ?>
@@ -285,7 +309,6 @@ require __DIR__ . '/partials/header.php';
                         <select name="status" class="form-control">
                             <option value="1" <?= (int) ($detailUser['status'] ?? 1) === 1 ? 'selected' : '' ?>>启用</option>
                             <option value="0" <?= (int) ($detailUser['status'] ?? 1) === 0 ? 'selected' : '' ?>>禁用</option>
-                            <option value="2" <?= (int) ($detailUser['status'] ?? 1) === 2 ? 'selected' : '' ?>>待审核</option>
                         </select>
                     </div>
                 </div>
