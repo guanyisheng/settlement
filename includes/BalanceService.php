@@ -7,38 +7,53 @@ require_once __DIR__ . '/SettlementService.php';
 
 class BalanceService
 {
-    private static function staffAmountExpr(): string
+    private static function staffAmountExpr(string $alias = ''): string
     {
+        $col = $alias !== '' ? "{$alias}." : '';
         // 优先用落库的 staff_amount；勿用当前全局倍率重算历史单
-        return 'COALESCE(staff_amount, amount)';
+        return "COALESCE({$col}staff_amount, {$col}amount)";
     }
 
     /**
-     * 累计收入 = 已通过 + 已结算订单的打手结算金额总和
+     * 累计收入 = 已通过 + 已结算订单中，当前打手应得份额
+     * 双人单：总 staff_amount 平分（主打手取一半，附加打手取剩余）
      */
-    private static function notDeletedSql(string $alias = ''): string
-    {
-        $col = $alias !== '' ? "{$alias}.deleted_at" : 'deleted_at';
-        return "({$col} IS NULL)";
-    }
-
     public static function getTotalIncome(PDO $pdo, int $staffId): float
     {
-        $expr = self::staffAmountExpr();
+        require_once __DIR__ . '/OrderService.php';
+        $expr = self::staffAmountExpr('o');
+        $hasCo = OrderService::hasCoStaffColumn($pdo);
+
+        if ($hasCo) {
+            // 主打手应得 ROUND(total/2,2)；附加打手应得 total - 该值
+            $shareExpr = "CASE
+                WHEN o.staff_id = ? AND (o.co_staff_id IS NULL OR o.co_staff_id = 0) THEN {$expr}
+                WHEN o.staff_id = ? AND o.co_staff_id IS NOT NULL AND o.co_staff_id > 0 THEN ROUND({$expr} / 2, 2)
+                WHEN o.co_staff_id = ? THEN ({$expr} - ROUND({$expr} / 2, 2))
+                ELSE 0
+            END";
+            $where = '(o.staff_id = ? OR o.co_staff_id = ?)';
+            $params = [$staffId, $staffId, $staffId, $staffId, $staffId];
+        } else {
+            $shareExpr = $expr;
+            $where = 'o.staff_id = ?';
+            $params = [$staffId];
+        }
+
         try {
             $stmt = $pdo->prepare(
-                "SELECT COALESCE(SUM({$expr}), 0) AS total
-                 FROM orders
-                 WHERE staff_id = ? AND status IN ('APPROVED', 'SETTLED') AND deleted_at IS NULL"
+                "SELECT COALESCE(SUM({$shareExpr}), 0) AS total
+                 FROM orders o
+                 WHERE {$where} AND o.status IN ('APPROVED', 'SETTLED') AND o.deleted_at IS NULL"
             );
-            $stmt->execute([$staffId]);
+            $stmt->execute($params);
         } catch (PDOException) {
             $stmt = $pdo->prepare(
-                "SELECT COALESCE(SUM({$expr}), 0) AS total
-                 FROM orders
-                 WHERE staff_id = ? AND status IN ('APPROVED', 'SETTLED')"
+                "SELECT COALESCE(SUM({$shareExpr}), 0) AS total
+                 FROM orders o
+                 WHERE {$where} AND o.status IN ('APPROVED', 'SETTLED')"
             );
-            $stmt->execute([$staffId]);
+            $stmt->execute($params);
         }
         return (float) $stmt->fetchColumn();
     }
@@ -111,12 +126,19 @@ class BalanceService
      */
     public static function getAvailableBalanceForUpdate(PDO $pdo, int $staffId): float
     {
-        $pdo->prepare(
-            "SELECT id FROM orders WHERE staff_id = ? FOR UPDATE"
-        )->execute([$staffId]);
+        require_once __DIR__ . '/OrderService.php';
+        if (OrderService::hasCoStaffColumn($pdo)) {
+            $pdo->prepare(
+                'SELECT id FROM orders WHERE staff_id = ? OR co_staff_id = ? FOR UPDATE'
+            )->execute([$staffId, $staffId]);
+        } else {
+            $pdo->prepare(
+                'SELECT id FROM orders WHERE staff_id = ? FOR UPDATE'
+            )->execute([$staffId]);
+        }
 
         $pdo->prepare(
-            "SELECT id FROM withdrawals WHERE staff_id = ? FOR UPDATE"
+            'SELECT id FROM withdrawals WHERE staff_id = ? FOR UPDATE'
         )->execute([$staffId]);
 
         return self::getAvailableBalance($pdo, $staffId);

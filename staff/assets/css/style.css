@@ -424,13 +424,103 @@ a { color: var(--primary-light); text-decoration: none; }
 }
 
 .search-select-native {
-    max-height: 120px;
+    display: block;
+    width: 100%;
+    min-height: 132px;
+    max-height: 180px;
     overflow-y: auto;
     background: var(--bg-elevated) !important;
     border: 1px solid var(--border) !important;
     border-radius: var(--radius-sm) !important;
-    padding: 8px !important;
+    padding: 4px !important;
     font-size: 14px !important;
+}
+
+.co-staff-picker {
+    position: relative;
+}
+
+.co-staff-results {
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.co-staff-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.co-staff-item:last-child {
+    border-bottom: 0;
+}
+
+.co-staff-item:active {
+    background: var(--primary-bg);
+}
+
+.co-staff-empty {
+    padding: 12px 14px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.co-staff-selected {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--primary-bg);
+    border: 1px solid rgba(36, 104, 232, 0.28);
+    color: var(--primary-light);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.co-staff-clear {
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.order-role-tag {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+
+.order-role-tag.is-primary {
+    background: var(--primary-bg);
+    color: var(--primary-light);
+}
+
+.order-share-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
 }
 
 .order-screenshot-links {

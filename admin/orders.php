@@ -157,7 +157,7 @@ require __DIR__ . '/partials/header.php';
                     <?php foreach ($orders as $o): ?>
                     <tr>
                         <td><?= e($o['wechat_order_no'] ?? $o['order_no']) ?></td>
-                        <td><?= e($o['staff_name']) ?></td>
+                        <td><?= e($o['staff_name']) ?><?php if (!empty($o['co_staff_name'])): ?><br><span style="color:var(--text-muted);font-size:12px">+ <?= e($o['co_staff_name']) ?></span><?php endif; ?></td>
                         <td><?= e($o['customer_name']) ?></td>
                         <td><?= e($o['business_type_name']) ?></td>
                         <td><?= e((string) (int) $o['quantity']) ?></td>
@@ -211,7 +211,7 @@ require __DIR__ . '/partials/header.php';
                     <?php else: ?>-<?php endif; ?>
                 </dd>
                 <dt>系统编号</dt><dd><?= e($viewOrder['order_no']) ?></dd>
-                <dt>打手</dt><dd><?= e($viewOrder['staff_name']) ?></dd>
+                <dt>打手</dt><dd><?= e($viewOrder['staff_name']) ?><?php if (!empty($viewOrder['co_staff_name'])): ?> + <?= e($viewOrder['co_staff_name']) ?>（附加）<?php endif; ?></dd>
                 <dt>客户</dt><dd><?= e($viewOrder['customer_name']) ?></dd>
                 <dt>业务类型</dt><dd><?= e($viewOrder['business_type_name']) ?></dd>
                 <dt>数量</dt><dd><?= e((string) (int) $viewOrder['quantity']) ?></dd>

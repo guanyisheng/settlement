@@ -16,6 +16,15 @@ Auth::requireReport();
 $pdo = Database::getConnection();
 $customers = CustomerService::getAll($pdo, true);
 $businessTypes = BusinessTypeService::getAll($pdo, true);
+$coStaffEnabled = OrderService::hasCoStaffColumn($pdo);
+$coStaffLabel = '';
+if ($coStaffEnabled && !empty($_POST['co_staff_id'])) {
+    require_once __DIR__ . '/../includes/UserService.php';
+    $coRow = UserService::getStaffById($pdo, (int) $_POST['co_staff_id']);
+    if ($coRow) {
+        $coStaffLabel = trim(($coRow['nickname'] ?: $coRow['username']) . ' (@' . $coRow['username'] . ')');
+    }
+}
 
 $error = '';
 $success = flash('success');
@@ -68,7 +77,9 @@ require __DIR__ . '/partials/head.php';
                     <label>选择客户 <span class="required-mark">*</span></label>
                     <input type="text" id="customerSearch" class="form-control search-select-input"
                            placeholder="输入关键字搜索客户" autocomplete="off">
-                    <select name="customer_id" id="customerSelect" class="form-control search-select-native" required>
+                    <input type="hidden" name="customer_id" id="customerId"
+                           value="<?= e((string) ($_POST['customer_id'] ?? '')) ?>">
+                    <select id="customerSelect" class="form-control search-select-native" size="6" required>
                         <option value="">请选择客户</option>
                         <?php foreach ($customers as $c): ?>
                             <option value="<?= $c['id'] ?>" <?= (($_POST['customer_id'] ?? '') == $c['id']) ? 'selected' : '' ?>><?= e($c['name']) ?></option>
@@ -80,7 +91,9 @@ require __DIR__ . '/partials/head.php';
                     <label>业务类型 <span class="required-mark">*</span></label>
                     <input type="text" id="businessTypeSearch" class="form-control search-select-input"
                            placeholder="输入关键字搜索业务类型" autocomplete="off">
-                    <select name="business_type_id" id="businessType" class="form-control search-select-native" required>
+                    <input type="hidden" name="business_type_id" id="businessTypeId"
+                           value="<?= e((string) ($_POST['business_type_id'] ?? '')) ?>">
+                    <select id="businessType" class="form-control search-select-native" size="6" required>
                         <option value="" data-price="0">请选择业务类型</option>
                         <?php foreach ($businessTypes as $bt): ?>
                             <option value="<?= $bt['id'] ?>" data-price="<?= $bt['unit_price'] ?>"
@@ -91,13 +104,32 @@ require __DIR__ . '/partials/head.php';
                     </select>
                 </div>
 
+                <?php if ($coStaffEnabled): ?>
+                <div class="form-group">
+                    <label>附加打手（选填）</label>
+                    <input type="hidden" name="co_staff_id" id="coStaffId"
+                           value="<?= e((string) ($_POST['co_staff_id'] ?? '')) ?>">
+                    <div class="co-staff-picker">
+                        <input type="text" id="coStaffSearch" class="form-control"
+                               placeholder="搜索昵称 / 用户名添加搭档"
+                               value="<?= e($coStaffLabel) ?>" autocomplete="off">
+                        <div class="co-staff-results" id="coStaffResults" hidden></div>
+                        <div class="co-staff-selected" id="coStaffSelected" <?= $coStaffLabel === '' ? 'hidden' : '' ?>>
+                            <span id="coStaffSelectedLabel"><?= e($coStaffLabel) ?></span>
+                            <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
+                        </div>
+                    </div>
+                    <p class="order-no-hint">同一微信订单号只能报一次。添加后对方订单列表可见本单，到手金额默认两人平分。</p>
+                </div>
+                <?php endif; ?>
+
                 <div class="form-group">
                     <label>微信订单编号 <span class="required-mark">*</span></label>
                     <input type="text" name="wechat_order_no" class="form-control wechat-order-input"
                            required maxlength="64" inputmode="text"
                            placeholder="请填写微信支付订单编号"
                            value="<?= e($_POST['wechat_order_no'] ?? '') ?>">
-                    <p class="order-no-hint">从微信账单或收款记录中复制订单编号</p>
+                    <p class="order-no-hint">从微信账单或收款记录中复制订单编号；重复编号会提示谁已报单</p>
                 </div>
 
                 <div class="form-group">
@@ -140,8 +172,9 @@ require __DIR__ . '/partials/head.php';
             <div class="amount-preview">
                 <div class="label">预计订单金额</div>
                 <div class="amount" id="previewAmount">¥0.00</div>
-                <div class="label" style="margin-top:10px;font-size:12px">预计到手 <?= SettlementService::formulaLabel() ?></div>
+                <div class="label" style="margin-top:10px;font-size:12px">预计到手合计 <?= SettlementService::formulaLabel() ?></div>
                 <div class="amount" id="previewStaffAmount" style="font-size:22px;margin-top:4px">¥0.00</div>
+                <div class="label" id="previewShareHint" style="margin-top:8px;font-size:12px;display:none">双人单平分后你预计可得 <span id="previewMyShare">¥0.00</span></div>
             </div>
 
             <button type="submit" class="btn btn-primary btn-block-fixed">提交报单</button>
@@ -159,10 +192,20 @@ function updateAmount() {
     const qty = parseInt(document.getElementById('quantity').value || 0, 10);
     const amount = (price * (qty > 0 ? qty : 0)).toFixed(2);
     document.getElementById('previewAmount').textContent = '¥' + Number(amount).toLocaleString('zh-CN', {minimumFractionDigits: 2});
-    const staffAmount = (parseFloat(amount) * 0.8 * 0.5).toFixed(2);
-    document.getElementById('previewStaffAmount').textContent = '¥' + Number(staffAmount).toLocaleString('zh-CN', {minimumFractionDigits: 2});
+    const staffAmount = parseFloat(amount) * 0.8 * 0.5;
+    document.getElementById('previewStaffAmount').textContent = '¥' + staffAmount.toLocaleString('zh-CN', {minimumFractionDigits: 2});
+    const hasCo = !!(document.getElementById('coStaffId')?.value);
+    const hint = document.getElementById('previewShareHint');
+    if (hint) {
+        hint.style.display = hasCo ? 'block' : 'none';
+        if (hasCo) {
+            const mine = Math.round(staffAmount / 2 * 100) / 100;
+            document.getElementById('previewMyShare').textContent = '¥' + mine.toLocaleString('zh-CN', {minimumFractionDigits: 2});
+        }
+    }
 }
 document.getElementById('businessType').addEventListener('change', updateAmount);
+document.getElementById('businessType').addEventListener('searchselect:change', updateAmount);
 document.getElementById('quantity').addEventListener('input', updateAmount);
 updateAmount();
 
@@ -185,10 +228,87 @@ document.getElementById('screenshots')?.addEventListener('change', function(e) {
         reader.readAsDataURL(file);
     });
 });
+
+(function initCoStaffPicker() {
+    const search = document.getElementById('coStaffSearch');
+    const hidden = document.getElementById('coStaffId');
+    const results = document.getElementById('coStaffResults');
+    const selectedWrap = document.getElementById('coStaffSelected');
+    const selectedLabel = document.getElementById('coStaffSelectedLabel');
+    const clearBtn = document.getElementById('coStaffClear');
+    if (!search || !hidden || !results) return;
+
+    let timer = null;
+
+    function setCoStaff(id, label) {
+        hidden.value = id ? String(id) : '';
+        selectedLabel.textContent = label || '';
+        selectedWrap.hidden = !id;
+        search.value = id ? '' : search.value;
+        results.hidden = true;
+        results.innerHTML = '';
+        updateAmount();
+    }
+
+    clearBtn?.addEventListener('click', () => {
+        setCoStaff('', '');
+        search.value = '';
+        search.focus();
+    });
+
+    search.addEventListener('input', () => {
+        const q = search.value.trim();
+        clearTimeout(timer);
+        if (q.length < 1) {
+            results.hidden = true;
+            results.innerHTML = '';
+            return;
+        }
+        timer = setTimeout(async () => {
+            try {
+                const res = await fetch('/staff/api_staff_search.php?q=' + encodeURIComponent(q));
+                const data = await res.json();
+                const items = data.items || [];
+                results.innerHTML = '';
+                if (!items.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'co-staff-empty';
+                    empty.textContent = '未找到打手';
+                    results.appendChild(empty);
+                    results.hidden = false;
+                    return;
+                }
+                items.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'co-staff-item';
+                    btn.dataset.id = String(item.id);
+                    btn.dataset.label = item.label;
+                    btn.textContent = item.label;
+                    results.appendChild(btn);
+                });
+                results.hidden = false;
+            } catch (e) {
+                results.innerHTML = '';
+                const empty = document.createElement('div');
+                empty.className = 'co-staff-empty';
+                empty.textContent = '搜索失败，请重试';
+                results.appendChild(empty);
+                results.hidden = false;
+            }
+        }, 220);
+    });
+
+    results.addEventListener('click', (e) => {
+        const btn = e.target.closest('.co-staff-item');
+        if (!btn) return;
+        setCoStaff(btn.dataset.id, btn.dataset.label);
+    });
+})();
 </script>
 <script src="/staff/assets/js/search-select.js"></script>
 <script>
-initSearchSelect('customerSearch', 'customerSelect');
-initSearchSelect('businessTypeSearch', 'businessType');
+initSearchSelect('customerSearch', 'customerSelect', 'customerId');
+initSearchSelect('businessTypeSearch', 'businessType', 'businessTypeId');
 </script>
 <?php require __DIR__ . '/partials/foot.php'; ?>
