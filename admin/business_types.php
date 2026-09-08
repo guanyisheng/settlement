@@ -31,12 +31,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect('/admin/business_types.php' . ($action === 'save_rates' ? '#settlement' : ''));
     } catch (Throwable $e) {
-        flash('error', $e->getMessage());
+        flashError($e, 'BIZ');
         redirect('/admin/business_types.php');
     }
 }
 
-$businessTypes = BusinessTypeService::getAll($pdo);
+$keyword = trim((string) ($_GET['q'] ?? ''));
+$businessTypes = BusinessTypeService::getAll($pdo, false, $keyword);
 $rates = SettlementService::rates();
 $example = SettlementService::calcStaffAmount(100);
 
@@ -45,7 +46,7 @@ $pageTitle = '业务类型管理';
 require __DIR__ . '/partials/header.php';
 ?>
 
-<?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+<?php renderAlertError($error); ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 
 <div class="card" id="settlement">
@@ -107,7 +108,15 @@ require __DIR__ . '/partials/header.php';
 </div>
 
 <div class="card">
-    <div class="card-header"><h2>业务类型列表</h2></div>
+    <div class="card-header" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">业务类型列表 (<?= count($businessTypes) ?>)</h2>
+        <form method="get" style="display:flex;gap:8px;align-items:center">
+            <input type="search" name="q" class="form-control" style="width:220px"
+                   placeholder="搜索业务名/备注/ID" value="<?= e($keyword) ?>">
+            <button type="submit" class="btn btn-sm btn-primary">搜索</button>
+            <?php if ($keyword !== ''): ?><a href="/admin/business_types.php" class="btn btn-sm">清除</a><?php endif; ?>
+        </form>
+    </div>
     <div class="card-body" style="padding:0">
         <div class="table-wrap">
             <table>

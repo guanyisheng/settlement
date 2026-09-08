@@ -49,6 +49,7 @@ class PermissionCatalog
         'statistics'     => ['stats.view', 'board.view'],
         'registrations'  => ['registration.review'],
         'staff'          => ['staff.view', 'staff.manage'],
+        'users'          => ['staff.view', 'staff.manage', 'user.view', 'user.manage'],
         'employees'      => ['user.view', 'user.manage'],
         'roles'          => ['role.view', 'role.manage'],
         'customers'      => ['customer.view', 'customer.manage'],

@@ -63,6 +63,33 @@ function flash(string $key, ?string $message = null): ?string
     return $value;
 }
 
+/** 业务异常转用户文案（含错误码，方便截屏定位） */
+function flashError(Throwable $e, string $module = 'SYS'): void
+{
+    require_once __DIR__ . '/ErrorCodes.php';
+    flash('error', ErrorCodes::format($e, $module));
+}
+
+/** 渲染带错误码高亮的错误条 */
+function renderAlertError(?string $message): void
+{
+    if ($message === null || $message === '') {
+        return;
+    }
+    $code = '';
+    $text = $message;
+    if (preg_match('/^(.*)\s*【(E-[A-Z0-9-]+)】\s*$/u', $message, $m)) {
+        $text = trim($m[1]);
+        $code = $m[2];
+    }
+    echo '<div class="alert alert-error">';
+    echo e($text);
+    if ($code !== '') {
+        echo ' <code class="error-code">' . e($code) . '</code>';
+    }
+    echo '</div>';
+}
+
 function orderStatusLabel(string $status): string
 {
     return match ($status) {

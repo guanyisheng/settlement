@@ -84,8 +84,121 @@ class DashboardService
         ];
     }
 
-    /** 老板端数据统计 */
-    public static function getBossStatistics(PDO $pdo): array
+    /** 老板端数据统计；$rangeKey: today|yesterday|week|last_week|month|last_month|all */
+    public static function getBossStatistics(PDO $pdo, string $rangeKey = 'month'): array
+    {
+        $base = self::getBossStatisticsBase($pdo);
+        $range = self::resolveDateRange($rangeKey);
+        $base['range'] = $range;
+        $base['range_metrics'] = self::getRangeMetrics($pdo, $range['from'], $range['to']);
+        try {
+            $base['overview']['prepaid_balance'] = (float) $pdo->query(
+                'SELECT COALESCE(SUM(balance), 0) FROM customers WHERE status = 1'
+            )->fetchColumn();
+        } catch (PDOException) {
+            $base['overview']['prepaid_balance'] = 0.0;
+        }
+        return $base;
+    }
+
+    /** @return array{key:string,label:string,from:?string,to:?string} */
+    public static function resolveDateRange(string $key): array
+    {
+        $today = date('Y-m-d');
+        return match ($key) {
+            'today' => [
+                'key' => 'today', 'label' => '今天',
+                'from' => $today, 'to' => $today,
+            ],
+            'yesterday' => [
+                'key' => 'yesterday', 'label' => '昨天',
+                'from' => date('Y-m-d', strtotime('-1 day')),
+                'to' => date('Y-m-d', strtotime('-1 day')),
+            ],
+            'week' => [
+                'key' => 'week', 'label' => '本周',
+                'from' => date('Y-m-d', strtotime('monday this week')),
+                'to' => $today,
+            ],
+            'last_week' => [
+                'key' => 'last_week', 'label' => '上周',
+                'from' => date('Y-m-d', strtotime('monday last week')),
+                'to' => date('Y-m-d', strtotime('sunday last week')),
+            ],
+            'last_month' => [
+                'key' => 'last_month', 'label' => '上月',
+                'from' => date('Y-m-01', strtotime('first day of last month')),
+                'to' => date('Y-m-t', strtotime('last day of last month')),
+            ],
+            'all' => [
+                'key' => 'all', 'label' => '总共',
+                'from' => null, 'to' => null,
+            ],
+            default => [
+                'key' => 'month', 'label' => '本月',
+                'from' => date('Y-m-01'), 'to' => $today,
+            ],
+        };
+    }
+
+    /** @return array{orders:int,flow:float,withdraw:float,commission:float} */
+    public static function getRangeMetrics(PDO $pdo, ?string $from, ?string $to): array
+    {
+        $alive = self::alive();
+        $orderDate = '';
+        $reviewDate = '';
+        $withdrawDate = '';
+        $paramsOrders = [];
+        $paramsReview = [];
+        $paramsWithdraw = [];
+
+        if ($from !== null && $to !== null) {
+            $orderDate = ' AND DATE(created_at) BETWEEN ? AND ?';
+            $reviewDate = ' AND DATE(reviewed_at) BETWEEN ? AND ?';
+            $withdrawDate = ' AND DATE(COALESCE(updated_at, created_at)) BETWEEN ? AND ?';
+            $paramsOrders = [$from, $to];
+            $paramsReview = [$from, $to];
+            $paramsWithdraw = [$from, $to];
+        }
+
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE {$alive}{$orderDate}");
+            $stmt->execute($paramsOrders);
+            $orders = (int) $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare(
+                "SELECT COALESCE(SUM(amount), 0) FROM orders
+                 WHERE status IN ('APPROVED','SETTLED') AND {$alive}{$reviewDate}"
+            );
+            $stmt->execute($paramsReview);
+            $flow = (float) $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare(
+                "SELECT COALESCE(SUM(amount - COALESCE(staff_amount, 0)), 0) FROM orders
+                 WHERE status IN ('APPROVED','SETTLED') AND {$alive}{$reviewDate}"
+            );
+            $stmt->execute($paramsReview);
+            $commission = (float) $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare(
+                "SELECT COALESCE(SUM(amount), 0) FROM withdrawals
+                 WHERE status = 'PAID'{$withdrawDate}"
+            );
+            $stmt->execute($paramsWithdraw);
+            $withdraw = (float) $stmt->fetchColumn();
+        } catch (PDOException) {
+            return ['orders' => 0, 'flow' => 0.0, 'withdraw' => 0.0, 'commission' => 0.0];
+        }
+
+        return [
+            'orders'     => $orders,
+            'flow'       => round($flow, 2),
+            'withdraw'   => round($withdraw, 2),
+            'commission' => round(max(0, $commission), 2),
+        ];
+    }
+
+    private static function getBossStatisticsBase(PDO $pdo): array
     {
         $today = date('Y-m-d');
         $monthStart = date('Y-m-01');
@@ -102,6 +215,7 @@ class DashboardService
                 'order_amount'    => (float) $pdo->query("SELECT COALESCE(SUM(amount), 0) FROM orders WHERE status IN ('APPROVED','SETTLED') AND {$alive}")->fetchColumn(),
                 'withdraw_paid'   => (float) $pdo->query("SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'PAID'")->fetchColumn(),
                 'pending_staff'   => (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'STAFF' AND status = 2 AND (deleted_at IS NULL)")->fetchColumn(),
+                'prepaid_balance' => 0.0,
             ];
 
             $period = [
@@ -167,7 +281,6 @@ class DashboardService
                 ];
             }
         } catch (PDOException) {
-            // 回退：无 deleted_at 时走旧逻辑（简化）
             return self::getBossStatisticsLegacy($pdo);
         }
 
@@ -202,6 +315,7 @@ class DashboardService
             'overview' => [
                 'staff_total' => 0, 'staff_active' => 0, 'customer_total' => 0,
                 'order_total' => 0, 'order_amount' => 0.0, 'withdraw_paid' => 0.0, 'pending_staff' => 0,
+                'prepaid_balance' => 0.0,
             ],
             'period' => [
                 'today_orders' => 0, 'today_amount' => 0.0, 'week_orders' => 0, 'week_amount' => 0.0,
@@ -214,6 +328,8 @@ class DashboardService
             'daily_trend' => [],
             'max_daily_count' => 1,
             'max_daily_amount' => 1.0,
+            'range' => self::resolveDateRange('month'),
+            'range_metrics' => ['orders' => 0, 'flow' => 0.0, 'withdraw' => 0.0, 'commission' => 0.0],
         ];
     }
 }

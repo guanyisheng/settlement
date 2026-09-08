@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect('/admin/orders.php?' . http_build_query($_GET));
     } catch (Throwable $e) {
-        flash('error', $e->getMessage());
+        flashError($e, 'ORD');
         redirect('/admin/orders.php?' . http_build_query($_GET));
     }
 }
@@ -82,7 +82,7 @@ $pageTitle = '订单管理';
 require __DIR__ . '/partials/header.php';
 ?>
 
-<?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+<?php renderAlertError($error); ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 
 <div class="card">

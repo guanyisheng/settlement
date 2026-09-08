@@ -563,14 +563,97 @@ class UserService
     public static function getStaffStats(PDO $pdo, int $staffId): array
     {
         require_once __DIR__ . '/BalanceService.php';
+        require_once __DIR__ . '/OrderService.php';
 
         $balance = BalanceService::getBalanceSummary($pdo, $staffId);
 
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM orders WHERE staff_id = ?');
-        $stmt->execute([$staffId]);
+        if (OrderService::hasCoStaffColumn($pdo)) {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM orders WHERE staff_id = ? OR co_staff_id = ?');
+            $stmt->execute([$staffId, $staffId]);
+        } else {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM orders WHERE staff_id = ?');
+            $stmt->execute([$staffId]);
+        }
         $orderCount = (int) $stmt->fetchColumn();
 
         return array_merge($balance, ['order_count' => $orderCount]);
+    }
+
+    /**
+     * 统一用户中心：打手 + 员工揉一块
+     * @param int|null $roleId 按角色筛选（roles.id）；null=全部
+     * @return array<int, array>
+     */
+    public static function getUnifiedUserList(PDO $pdo, ?string $keyword = null, ?int $roleId = null): array
+    {
+        $keyword = trim((string) $keyword);
+        $params = [];
+        $where = ['1=1'];
+
+        try {
+            $pdo->query('SELECT deleted_at FROM users LIMIT 0');
+            $where[] = 'u.deleted_at IS NULL';
+        } catch (PDOException) {
+        }
+
+        if ($keyword !== '') {
+            $where[] = '(u.username LIKE ? OR u.nickname LIKE ? OR CAST(u.id AS CHAR) = ? OR IFNULL(u.examiner, \'\') LIKE ?)';
+            $like = '%' . $keyword . '%';
+            array_push($params, $like, $like, $keyword, $like);
+        }
+
+        require_once __DIR__ . '/PermissionService.php';
+        $rbac = PermissionService::isRbacReady($pdo);
+
+        if ($roleId !== null && $roleId > 0) {
+            if ($rbac) {
+                $where[] = '(EXISTS (
+                    SELECT 1 FROM user_roles urf
+                    WHERE urf.user_id = u.id AND urf.role_id = ?
+                ) OR EXISTS (
+                    SELECT 1 FROM roles rf
+                    WHERE rf.id = ? AND rf.code = u.role AND rf.deleted_at IS NULL
+                ))';
+                $params[] = $roleId;
+                $params[] = $roleId;
+            } else {
+                $stmt = $pdo->prepare('SELECT code FROM roles WHERE id = ? LIMIT 1');
+                try {
+                    $stmt->execute([$roleId]);
+                    $code = (string) ($stmt->fetchColumn() ?: '');
+                } catch (PDOException) {
+                    $code = '';
+                }
+                if ($code !== '') {
+                    $where[] = 'u.role = ?';
+                    $params[] = $code === 'ADMIN' ? 'BOSS' : $code;
+                }
+            }
+        }
+
+        $sql = 'SELECT u.* FROM users u WHERE ' . implode(' AND ', $where)
+            . ' ORDER BY u.status DESC, u.created_at DESC LIMIT 1000';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /** 是否打手向（含多角色里带 STAFF） */
+    public static function userIsStaffLike(PDO $pdo, array $user): bool
+    {
+        if (($user['role'] ?? '') === 'STAFF') {
+            return true;
+        }
+        require_once __DIR__ . '/PermissionService.php';
+        if (!PermissionService::isRbacReady($pdo)) {
+            return false;
+        }
+        foreach (PermissionService::getUserRoles($pdo, (int) $user['id']) as $r) {
+            if (($r['code'] ?? '') === 'STAFF') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 保存打手毛照（单张，兼容旧调用） */

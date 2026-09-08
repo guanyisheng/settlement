@@ -1252,8 +1252,15 @@ body.login-body::after {
     flex-shrink: 0;
 }
 
-.login-card .btn {
-    margin-top: 8px;
+.error-code {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--danger-bg);
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 700;
 }
 
 /* ========== 快捷操作 ========== */

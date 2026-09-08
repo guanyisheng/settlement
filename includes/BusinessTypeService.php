@@ -7,14 +7,30 @@ require_once __DIR__ . '/helpers.php';
 
 class BusinessTypeService
 {
-    public static function getAll(PDO $pdo, bool $activeOnly = false): array
+    public static function getAll(PDO $pdo, bool $activeOnly = false, ?string $keyword = null): array
     {
-        $sql = 'SELECT * FROM business_types';
+        $keyword = trim((string) $keyword);
+        $where = [];
+        $params = [];
         if ($activeOnly) {
-            $sql .= ' WHERE status = 1';
+            $where[] = 'status = 1';
+        }
+        if ($keyword !== '') {
+            $where[] = '(name LIKE ? OR IFNULL(remark, \'\') LIKE ? OR CAST(id AS CHAR) = ?)';
+            $like = '%' . $keyword . '%';
+            $params = [$like, $like, $keyword];
+        }
+        $sql = 'SELECT * FROM business_types';
+        if ($where !== []) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
         }
         $sql .= ' ORDER BY created_at DESC';
-        return $pdo->query($sql)->fetchAll();
+        if ($params === []) {
+            return $pdo->query($sql)->fetchAll();
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
     public static function create(PDO $pdo, array $data): int
