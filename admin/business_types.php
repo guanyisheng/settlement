@@ -39,7 +39,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $keyword = trim((string) ($_GET['q'] ?? ''));
 $businessTypes = BusinessTypeService::getAll($pdo, false, $keyword);
 $rates = SettlementService::rates();
-$example = SettlementService::calcStaffAmount(100);
 
 $currentPage = 'business_types';
 $pageTitle = '业务类型管理';
