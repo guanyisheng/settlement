@@ -10,10 +10,17 @@ require_once __DIR__ . '/../includes/helpers.php';
 Auth::requirePage('statistics');
 
 $pdo = Database::getConnection();
-$data = DashboardService::getBossStatistics($pdo);
+$rangeKey = (string) ($_GET['range'] ?? 'month');
+$allowedRanges = ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'all'];
+if (!in_array($rangeKey, $allowedRanges, true)) {
+    $rangeKey = 'month';
+}
+$data = DashboardService::getBossStatistics($pdo, $rangeKey);
 $overview = $data['overview'];
 $period = $data['period'];
 $byStatus = $data['by_status'];
+$range = $data['range'] ?? DashboardService::resolveDateRange($rangeKey);
+$rangeMetrics = $data['range_metrics'] ?? ['orders' => 0, 'flow' => 0.0, 'withdraw' => 0.0, 'commission' => 0.0];
 $statusLabels = [
     'PENDING'  => '待审核',
     'APPROVED' => '已通过',
@@ -24,6 +31,16 @@ $statusLabels = [
 $currentPage = 'statistics';
 $pageTitle = '数据统计';
 require __DIR__ . '/partials/header.php';
+
+$rangeLinks = [
+    'today' => '今天',
+    'yesterday' => '昨天',
+    'week' => '本周',
+    'last_week' => '上周',
+    'month' => '本月',
+    'last_month' => '上月',
+    'all' => '总共',
+];
 ?>
 
 <div class="stats-grid">
@@ -37,6 +54,10 @@ require __DIR__ . '/partials/header.php';
         <div class="value primary"><?= $overview['customer_total'] ?></div>
     </div>
     <div class="stat-card">
+        <div class="label">预存总余额</div>
+        <div class="value success"><?= formatMoney($overview['prepaid_balance'] ?? 0) ?></div>
+    </div>
+    <div class="stat-card">
         <div class="label">累计订单</div>
         <div class="value"><?= $overview['order_total'] ?></div>
     </div>
@@ -47,6 +68,39 @@ require __DIR__ . '/partials/header.php';
     <div class="stat-card">
         <div class="label">累计已放款</div>
         <div class="value"><?= formatMoney($overview['withdraw_paid']) ?></div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:24px">
+    <div class="card-header" style="flex-wrap:wrap;gap:12px">
+        <h2 style="margin:0">订单结算区 · <?= e($range['label']) ?></h2>
+        <div class="range-chips">
+            <?php foreach ($rangeLinks as $key => $label): ?>
+                <a class="range-chip <?= $rangeKey === $key ? 'active' : '' ?>"
+                   href="?range=<?= e($key) ?>"><?= e($label) ?></a>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="stats-grid" style="margin:0">
+            <div class="stat-card">
+                <div class="label">订单数</div>
+                <div class="value primary"><?= (int) $rangeMetrics['orders'] ?></div>
+            </div>
+            <div class="stat-card">
+                <div class="label">总流水</div>
+                <div class="value success"><?= formatMoney($rangeMetrics['flow']) ?></div>
+            </div>
+            <div class="stat-card">
+                <div class="label">提现金额</div>
+                <div class="value"><?= formatMoney($rangeMetrics['withdraw']) ?></div>
+            </div>
+            <div class="stat-card">
+                <div class="label">抽成</div>
+                <div class="value warning"><?= formatMoney($rangeMetrics['commission']) ?></div>
+                <div class="stat-sub">流水 − 打手结算</div>
+            </div>
+        </div>
     </div>
 </div>
 

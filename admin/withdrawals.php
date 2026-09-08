@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         redirect('/admin/withdrawals.php?' . http_build_query(array_diff_key($_GET, ['id' => ''])));
     } catch (Throwable $e) {
-        flash('error', $e->getMessage());
+        flashError($e, 'WDR');
         redirect('/admin/withdrawals.php?' . http_build_query($_GET));
     }
 }
@@ -54,7 +54,7 @@ $pageTitle = '提现管理';
 require __DIR__ . '/partials/header.php';
 ?>
 
-<?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+<?php renderAlertError($error); ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 
 <div class="card">

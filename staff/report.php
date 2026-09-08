@@ -10,6 +10,7 @@ require_once __DIR__ . '/../includes/BusinessTypeService.php';
 require_once __DIR__ . '/../includes/OrderService.php';
 require_once __DIR__ . '/../includes/SettlementService.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/ErrorCodes.php';
 
 Auth::requireReport();
 
@@ -40,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', '报单提交成功，微信订单号：' . $result['wechat_order_no']);
         redirect(Auth::canAccessAdmin() ? '/admin/orders.php' : '/staff/index.php');
     } catch (Throwable $e) {
-        $error = $e->getMessage();
+        $error = ErrorCodes::format($e, 'RPT');
     }
 }
 
@@ -63,7 +64,7 @@ require __DIR__ . '/partials/head.php';
 
     <main class="page-content">
         <?php if ($error): ?>
-            <div class="alert alert-error"><?= e($error) ?></div>
+            <?php renderAlertError($error); ?>
         <?php endif; ?>
         <?php if ($success): ?>
             <div class="alert alert-success"><?= e($success) ?></div>

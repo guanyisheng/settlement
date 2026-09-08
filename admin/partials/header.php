@@ -12,13 +12,26 @@ $isBoss = Auth::isBoss();
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="screen-orientation" content="portrait">
     <meta name="theme-color" content="<?= brandThemeColor() ?>">
     <link rel="icon" href="<?= brandLogo() ?>" type="image/png">
     <title><?= e(brandTitle($pageTitle)) ?></title>
     <link rel="stylesheet" href="/admin/assets/css/admin.css">
+    <style>
+      @media screen and (orientation: landscape) and (max-width: 900px) {
+        body::after {
+          content: '请竖屏使用管理后台';
+          position: fixed; inset: 0; z-index: 9999;
+          display: flex; align-items: center; justify-content: center;
+          background: #0d1117; color: #e6edf3; font-size: 16px; font-weight: 600;
+          padding: 24px; text-align: center;
+        }
+        .layout { filter: blur(2px); pointer-events: none; }
+      }
+    </style>
 </head>
-<body>
+<body class="admin-body">
 <div class="layout">
     <aside class="sidebar">
         <div class="sidebar-brand">
@@ -60,9 +73,9 @@ $isBoss = Auth::isBoss();
                 <?= svgIcon('registrations') ?><span>注册审核</span>
             </a>
             <?php endif; ?>
-            <?php if (Auth::canAccessPage('staff')): ?>
-            <a href="/admin/staff.php" class="nav-item <?= $currentPage === 'staff' ? 'active' : '' ?>">
-                <?= svgIcon('staff') ?><span>打手管理</span>
+            <?php if (Auth::canAccessPage('users') || Auth::canAccessPage('staff') || Auth::canAccessPage('employees')): ?>
+            <a href="/admin/users.php" class="nav-item <?= in_array($currentPage, ['users', 'staff', 'employees'], true) ? 'active' : '' ?>">
+                <?= svgIcon('staff') ?><span>用户中心</span>
             </a>
             <?php endif; ?>
             <?php if (Auth::canAccessPage('roles')): ?>
@@ -73,11 +86,6 @@ $isBoss = Auth::isBoss();
             <?php if (Auth::canAccessPage('settings')): ?>
             <a href="/admin/settings.php" class="nav-item <?= $currentPage === 'settings' ? 'active' : '' ?>">
                 <?= svgIcon('settings') ?><span>系统设置</span>
-            </a>
-            <?php endif; ?>
-            <?php if (Auth::canAccessPage('employees')): ?>
-            <a href="/admin/employees.php" class="nav-item <?= $currentPage === 'employees' ? 'active' : '' ?>">
-                <?= svgIcon('employees') ?><span>员工管理</span>
             </a>
             <?php endif; ?>
             <?php if (Auth::canAccessPage('customers')): ?>
@@ -94,9 +102,13 @@ $isBoss = Auth::isBoss();
     </aside>
     <div class="main">
         <header class="topbar">
+            <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-label="打开菜单">☰</button>
             <div class="topbar-title"><?= e($pageTitle) ?></div>
             <div class="topbar-user">
                 <span><?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
+                <?php if (method_exists('Auth', 'needsPortalChoice') && Auth::needsPortalChoice()): ?>
+                <a href="/choose_portal.php" class="topbar-link"><span>切换入口</span></a>
+                <?php endif; ?>
                 <a href="/admin/password.php" class="topbar-link">
                     <?= svgIcon('password', 'topbar-icon') ?><span>改密</span>
                 </a>

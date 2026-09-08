@@ -456,6 +456,109 @@ tr:hover td { background: rgba(255,255,255,.02); }
 }
 
 @media (max-width: 768px) {
-    .sidebar { transform: translateX(-100%); }
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        z-index: 1001;
+    }
+    .layout.nav-open .sidebar {
+        transform: translateX(0);
+    }
     .main { margin-left: 0; }
+    .mobile-nav-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        margin-right: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+        font-size: 18px;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .topbar {
+        gap: 8px;
+    }
+    .topbar-user span:first-child {
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .content > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+    }
+    .sidebar-backdrop:not([hidden]) {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 1000;
+    }
 }
+
+.mobile-nav-toggle { display: none; }
+
+.range-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.range-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-decoration: none;
+}
+
+.range-chip.active {
+    background: var(--primary, #2468e8);
+    border-color: transparent;
+    color: #fff;
+    font-weight: 600;
+}
+
+.error-code {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(255, 92, 106, 0.18);
+    color: #ff8a95;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
+
+#resetModal:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.55);
+}
+
+#resetModal .modal-dialog {
+    width: min(420px, calc(100vw - 32px));
+    background: var(--surface, #161b22);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.stat-card .value.warning { color: #fbbf24; }
