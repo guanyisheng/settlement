@@ -24,9 +24,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             BusinessTypeService::update($pdo, (int) $_POST['id'], $_POST);
             flash('success', '业务类型已更新');
         } elseif ($action === 'save_rates') {
-            $a = (float) ($_POST['rate_a_pct'] ?? 0) / 100;
-            $b = (float) ($_POST['rate_b_pct'] ?? 0) / 100;
-            SettlementService::setRates($pdo, $a, $b);
+            SettlementService::setRates(
+                $pdo,
+                (float) ($_POST['rate_a_pct'] ?? 0) / 100,
+                (float) ($_POST['rate_b_pct'] ?? 0) / 100,
+                (float) ($_POST['rate_solo_pct'] ?? 0) / 100
+            );
             flash('success', '默认结算倍率已更新。新报单按此计算；特殊单请在订单详情里手动改。');
         }
         redirect('/admin/business_types.php' . ($action === 'save_rates' ? '#settlement' : ''));
@@ -51,13 +54,20 @@ require __DIR__ . '/partials/header.php';
 <div class="card" id="settlement">
     <div class="card-header"><h2>默认结算倍率</h2></div>
     <div class="card-body">
-        <p>公式：<strong>订单金额 × 基础倍率 × 打手倍率</strong></p>
-        <p>示例（一人接单）：订单 ¥100 → 打手结算 <?= formatMoney(SettlementService::calcByCrewMode(100, false)['staff_amount']) ?>（<?= e(SettlementService::crewModeHint(false)) ?>）</p>
-        <p>示例（双人接单）：同一单总额同上，每人约 <?= formatMoney(SettlementService::calcByCrewMode(100, true)['staff_amount'] / 2) ?>（<?= e(SettlementService::crewModeHint(true)) ?>）</p>
+        <p>公式：<strong>订单金额 × 基础倍率 × 对应打手倍率</strong></p>
+        <?php
+            $soloEx = SettlementService::calcByCrewMode(100, false);
+            $duoEx = SettlementService::calcByCrewMode(100, true);
+        ?>
+        <p>示例订单 ¥100：</p>
+        <ul style="margin:8px 0 0 1.2em;color:var(--text-secondary);font-size:14px;line-height:1.7">
+            <li>一人接单 → 打手拿到 <strong><?= formatMoney($soloEx['staff_amount']) ?></strong>（<?= e(SettlementService::crewModeHint(false)) ?>）</li>
+            <li>双人接单 → 每人 <strong><?= formatMoney((float) ($duoEx['each_amount'] ?? $duoEx['staff_amount'] / 2)) ?></strong>，合计 <?= formatMoney($duoEx['staff_amount']) ?>（<?= e(SettlementService::crewModeHint(true)) ?>）</li>
+        </ul>
         <p style="color:var(--text-muted);font-size:13px;margin-top:12px">
-            「打手倍率」按<strong>双人每人半份</strong>配置（默认 50%）。一人接单自动按半份×2（默认 100%）结算加钱；双人单总额与一人相同再平分。特殊单请到<strong>订单管理</strong>手动改。只影响新报单。
+            可在下方分别设置<strong>一个人</strong>和<strong>两个人（每人）</strong>的打手倍率。只影响<strong>新报单</strong>；历史单不重算。特殊单仍可在订单详情里改本单倍率/金额。
         </p>
-        <form method="post" style="margin-top:20px;max-width:480px">
+        <form method="post" style="margin-top:20px;max-width:640px">
             <input type="hidden" name="action" value="save_rates">
             <div class="form-row">
                 <div class="form-group">
@@ -66,7 +76,12 @@ require __DIR__ . '/partials/header.php';
                            value="<?= e((string) round($rates['rate_a'] * 100, 2)) ?>" required>
                 </div>
                 <div class="form-group">
-                    <label>打手倍率 / 双人半份（%）</label>
+                    <label>一人接单 · 打手倍率（%）</label>
+                    <input type="number" name="rate_solo_pct" class="form-control" step="0.01" min="0.01" max="100"
+                           value="<?= e((string) round(($rates['rate_solo'] ?? min(1, $rates['rate_b'] * 2)) * 100, 2)) ?>" required>
+                </div>
+                <div class="form-group">
+                    <label>双人接单 · 每人倍率（%）</label>
                     <input type="number" name="rate_b_pct" class="form-control" step="0.01" min="0.01" max="100"
                            value="<?= e((string) round($rates['rate_b'] * 100, 2)) ?>" required>
                 </div>

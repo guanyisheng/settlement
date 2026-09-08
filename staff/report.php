@@ -20,8 +20,8 @@ $businessTypes = BusinessTypeService::getAll($pdo, true);
 $coStaffEnabled = OrderService::hasCoStaffColumn($pdo);
 $rates = SettlementService::rates();
 $rateAPct = (float) $rates['rate_a'] * 100;
+$rateSoloPct = (float) ($rates['rate_solo'] ?? min(1, $rates['rate_b'] * 2)) * 100;
 $rateBHalfPct = (float) $rates['rate_b'] * 100;
-$rateBFullPct = min(100.0, $rateBHalfPct * 2);
 $postedCrewMode = (string) ($_POST['crew_mode'] ?? 'solo');
 if (!in_array($postedCrewMode, ['solo', 'duo'], true)) {
     $postedCrewMode = 'solo';
@@ -129,7 +129,7 @@ require __DIR__ . '/partials/head.php';
                             <span>双人接单</span>
                         </label>
                     </div>
-                    <p class="order-no-hint">默认一人；一人按 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateBFullPct, 2, '.', ''), '0'), '.')) ?>% 结算，双人每人约一半</p>
+                    <p class="order-no-hint">默认一人；一人按 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateSoloPct, 2, '.', ''), '0'), '.')) ?>%，双人每人 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateBHalfPct, 2, '.', ''), '0'), '.')) ?>%（后台可改）</p>
                 </div>
 
                 <div class="form-group" id="coStaffGroup" <?= $postedCrewMode === 'duo' ? '' : 'hidden' ?>>
@@ -220,8 +220,8 @@ require __DIR__ . '/partials/head.php';
 
 <script>
 const SETTLEMENT_RATE_A = <?= json_encode((float) $rates['rate_a']) ?>;
-const SETTLEMENT_RATE_B_HALF = <?= json_encode((float) $rates['rate_b']) ?>;
-const SETTLEMENT_RATE_B_FULL = Math.min(1, SETTLEMENT_RATE_B_HALF * 2);
+const SETTLEMENT_RATE_SOLO = <?= json_encode((float) ($rates['rate_solo'] ?? min(1, $rates['rate_b'] * 2))) ?>;
+const SETTLEMENT_RATE_DUO = <?= json_encode((float) $rates['rate_b']) ?>;
 
 function formatMoneyYuan(n) {
     return '¥' + Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -269,17 +269,20 @@ function updateAmount() {
     document.getElementById('previewAmount').textContent = formatMoneyYuan(amount);
 
     const duo = isDuoMode();
-    const pool = amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_B_FULL;
+    const myRate = duo ? SETTLEMENT_RATE_DUO : SETTLEMENT_RATE_SOLO;
+    const pool = duo
+        ? amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_DUO * 2
+        : amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_SOLO;
     const formula = document.getElementById('previewFormula');
     if (formula) {
         formula.textContent = duo
-            ? ('双人接单 · 每人约 ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_B_HALF) + '%')
-            : ('一人接单 · ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_B_FULL) + '%（半份×2）');
+            ? ('双人接单 · 每人 ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_DUO) + '%')
+            : ('一人接单 · ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_SOLO) + '%');
     }
 
     const hint = document.getElementById('previewShareHint');
     if (duo) {
-        const mine = Math.round(pool / 2 * 100) / 100;
+        const mine = Math.round(amount * SETTLEMENT_RATE_A * myRate * 100) / 100;
         document.getElementById('previewStaffAmount').textContent = formatMoneyYuan(pool);
         if (hint) {
             hint.style.display = 'block';

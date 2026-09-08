@@ -29,6 +29,8 @@ class SettingsService
             'app_version'       => '1.2.0',
             'settlement_rate_a' => (string) ($settlement['rate_a'] ?? 0.8),
             'settlement_rate_b' => (string) ($settlement['rate_b'] ?? 0.5),
+            // 一人打手倍率；未配置时回退为双人半份×2（兼容旧库）
+            'settlement_rate_solo' => (string) ($settlement['rate_solo'] ?? min(1, ((float) ($settlement['rate_b'] ?? 0.5)) * 2)),
             'storage_driver'    => (string) ($storage['driver'] ?? 'auto'),
             'cos_secret_id'     => (string) ($cos['secret_id'] ?? ''),
             'cos_secret_key'    => (string) ($cos['secret_key'] ?? ''),
@@ -100,9 +102,17 @@ class SettingsService
 
     public static function getSettlementRates(): array
     {
+        $rateA = (float) self::get('settlement_rate_a', '0.8');
+        $rateB = (float) self::get('settlement_rate_b', '0.5');
+        $soloRaw = self::get('settlement_rate_solo', '');
+        $rateSolo = $soloRaw !== ''
+            ? (float) $soloRaw
+            : min(1.0, round($rateB * 2, 4));
+
         return [
-            'rate_a' => (float) self::get('settlement_rate_a', '0.8'),
-            'rate_b' => (float) self::get('settlement_rate_b', '0.5'),
+            'rate_a' => $rateA,
+            'rate_b' => $rateB,       // 双人每人半份
+            'rate_solo' => $rateSolo, // 一人全部份额
         ];
     }
 

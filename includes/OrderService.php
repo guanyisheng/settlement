@@ -142,10 +142,11 @@ class OrderService
         require_once __DIR__ . '/SettlementService.php';
         $rates = SettlementService::rates();
         $rateA = (float) $rates['rate_a'];
-        $halfShareB = (float) $rates['rate_b'];
+        $duoRateB = (float) $rates['rate_b'];
+        $soloRateB = (float) ($rates['rate_solo'] ?? min(1.0, $duoRateB * 2));
         $isDuo = $coStaffId > 0;
 
-        // 本单自定义倍率 / 结算金额（体验单可少抽）；未自定义时按一人/双人规则
+        // 本单自定义倍率 / 结算金额；未自定义时按一人/双人后台费率
         $manualRateB = false;
         if (isset($data['rate_a']) && $data['rate_a'] !== '') {
             $rateA = (float) $data['rate_a'];
@@ -153,13 +154,20 @@ class OrderService
             $rateA = (float) $data['rate_a_pct'] / 100;
         }
         if (isset($data['rate_b']) && $data['rate_b'] !== '') {
-            $halfShareB = (float) $data['rate_b'];
+            $duoRateB = (float) $data['rate_b'];
+            $soloRateB = $duoRateB; // 审核端单字段覆盖时按本单填写值理解
             $manualRateB = true;
         } elseif (isset($data['rate_b_pct']) && $data['rate_b_pct'] !== '') {
-            $halfShareB = (float) $data['rate_b_pct'] / 100;
+            $duoRateB = (float) $data['rate_b_pct'] / 100;
+            $soloRateB = $duoRateB;
             $manualRateB = true;
         }
-        if ($rateA < 0 || $rateA > 1 || $halfShareB < 0 || $halfShareB > 1) {
+        if (isset($data['rate_solo']) && $data['rate_solo'] !== '') {
+            $soloRateB = (float) $data['rate_solo'];
+        } elseif (isset($data['rate_solo_pct']) && $data['rate_solo_pct'] !== '') {
+            $soloRateB = (float) $data['rate_solo_pct'] / 100;
+        }
+        if ($rateA < 0 || $rateA > 1 || $duoRateB < 0 || $duoRateB > 1 || $soloRateB < 0 || $soloRateB > 1) {
             throw new InvalidArgumentException('倍率需在 0%～100% 之间');
         }
 
@@ -168,10 +176,9 @@ class OrderService
             if ($staffAmount < 0) {
                 throw new InvalidArgumentException('打手结算金额不能为负');
             }
-            // 手动金额：一人快照全部份额，双人快照半份倍率
-            $rateB = $isDuo ? $halfShareB : ($manualRateB ? $halfShareB : min(1.0, round($halfShareB * 2, 4)));
+            $rateB = $isDuo ? $duoRateB : ($manualRateB ? $duoRateB : $soloRateB);
         } else {
-            $calc = SettlementService::calcByCrewMode($amount, $isDuo, $rateA, $halfShareB);
+            $calc = SettlementService::calcByCrewMode($amount, $isDuo, $rateA, $duoRateB, $soloRateB);
             $staffAmount = $calc['staff_amount'];
             $rateA = $calc['rate_a'];
             $rateB = $calc['rate_b'];
