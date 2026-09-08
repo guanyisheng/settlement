@@ -57,6 +57,7 @@ class OrderService
         $remark = trim($data['remark'] ?? '');
         $wechatOrderNo = trim($data['wechat_order_no'] ?? '');
         $coStaffId = (int) ($data['co_staff_id'] ?? 0);
+        $crewMode = strtolower(trim((string) ($data['crew_mode'] ?? '')));
         $uploadedFiles = normalizeUploadedFiles($screenshotFiles);
 
         // 兼容 datetime-local 格式 (2026-09-02T20:00)
@@ -92,6 +93,16 @@ class OrderService
         }
         if (mb_strlen($wechatOrderNo) > 64) {
             throw new InvalidArgumentException('微信订单编号过长');
+        }
+
+        if ($crewMode === 'duo' || $crewMode === 'double' || $crewMode === '2') {
+            if ($coStaffId <= 0) {
+                throw new InvalidArgumentException('双人接单请选择附加打手');
+            }
+        } elseif ($crewMode === 'solo' || $crewMode === 'single' || $crewMode === '1') {
+            $coStaffId = 0;
+        } elseif ($crewMode !== '' && $crewMode !== 'auto') {
+            throw new InvalidArgumentException('接单方式无效');
         }
 
         if ($coStaffId > 0) {
@@ -131,20 +142,24 @@ class OrderService
         require_once __DIR__ . '/SettlementService.php';
         $rates = SettlementService::rates();
         $rateA = (float) $rates['rate_a'];
-        $rateB = (float) $rates['rate_b'];
+        $halfShareB = (float) $rates['rate_b'];
+        $isDuo = $coStaffId > 0;
 
-        // 本单自定义倍率 / 结算金额（体验单可少抽）
+        // 本单自定义倍率 / 结算金额（体验单可少抽）；未自定义时按一人/双人规则
+        $manualRateB = false;
         if (isset($data['rate_a']) && $data['rate_a'] !== '') {
             $rateA = (float) $data['rate_a'];
         } elseif (isset($data['rate_a_pct']) && $data['rate_a_pct'] !== '') {
             $rateA = (float) $data['rate_a_pct'] / 100;
         }
         if (isset($data['rate_b']) && $data['rate_b'] !== '') {
-            $rateB = (float) $data['rate_b'];
+            $halfShareB = (float) $data['rate_b'];
+            $manualRateB = true;
         } elseif (isset($data['rate_b_pct']) && $data['rate_b_pct'] !== '') {
-            $rateB = (float) $data['rate_b_pct'] / 100;
+            $halfShareB = (float) $data['rate_b_pct'] / 100;
+            $manualRateB = true;
         }
-        if ($rateA < 0 || $rateA > 1 || $rateB < 0 || $rateB > 1) {
+        if ($rateA < 0 || $rateA > 1 || $halfShareB < 0 || $halfShareB > 1) {
             throw new InvalidArgumentException('倍率需在 0%～100% 之间');
         }
 
@@ -153,8 +168,13 @@ class OrderService
             if ($staffAmount < 0) {
                 throw new InvalidArgumentException('打手结算金额不能为负');
             }
+            // 手动金额：一人快照全部份额，双人快照半份倍率
+            $rateB = $isDuo ? $halfShareB : ($manualRateB ? $halfShareB : min(1.0, round($halfShareB * 2, 4)));
         } else {
-            $staffAmount = SettlementService::calcStaffAmount($amount, $rateA, $rateB);
+            $calc = SettlementService::calcByCrewMode($amount, $isDuo, $rateA, $halfShareB);
+            $staffAmount = $calc['staff_amount'];
+            $rateA = $calc['rate_a'];
+            $rateB = $calc['rate_b'];
         }
 
         $orderNo = generateNo('ORD');
@@ -371,7 +391,17 @@ class OrderService
             $rateB = (float) $data['rate_b_pct'] / 100;
         }
 
-        $calculated = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
+        $isDuo = (int) ($order['co_staff_id'] ?? 0) > 0;
+        if ($isDuo) {
+            // 双人：表单/快照里的 rate_b 按「每人半份」理解，总额=半份×2
+            $calc = SettlementService::calcByCrewMode((float) $order['amount'], true, $rateA, $rateB);
+            $rateA = $calc['rate_a'];
+            $rateB = $calc['rate_b'];
+            $calculated = $calc['staff_amount'];
+        } else {
+            // 一人：rate_b 即全部份额（常见 100%）
+            $calculated = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
+        }
         $manual = !empty($data['manual_amount']) || !empty($data['settlement_manual']);
 
         if ($manual && isset($data['staff_amount']) && $data['staff_amount'] !== '') {

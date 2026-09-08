@@ -18,12 +18,21 @@ $pdo = Database::getConnection();
 $customers = CustomerService::getAll($pdo, true);
 $businessTypes = BusinessTypeService::getAll($pdo, true);
 $coStaffEnabled = OrderService::hasCoStaffColumn($pdo);
+$rates = SettlementService::rates();
+$rateAPct = (float) $rates['rate_a'] * 100;
+$rateBHalfPct = (float) $rates['rate_b'] * 100;
+$rateBFullPct = min(100.0, $rateBHalfPct * 2);
+$postedCrewMode = (string) ($_POST['crew_mode'] ?? 'solo');
+if (!in_array($postedCrewMode, ['solo', 'duo'], true)) {
+    $postedCrewMode = 'solo';
+}
 $coStaffLabel = '';
 if ($coStaffEnabled && !empty($_POST['co_staff_id'])) {
     require_once __DIR__ . '/../includes/UserService.php';
     $coRow = UserService::getStaffById($pdo, (int) $_POST['co_staff_id']);
     if ($coRow) {
         $coStaffLabel = trim(($coRow['nickname'] ?: $coRow['username']) . ' (@' . $coRow['username'] . ')');
+        $postedCrewMode = 'duo';
     }
 }
 
@@ -107,21 +116,41 @@ require __DIR__ . '/partials/head.php';
 
                 <?php if ($coStaffEnabled): ?>
                 <div class="form-group">
-                    <label>附加打手（选填）</label>
+                    <label>接单方式 <span class="required-mark">*</span></label>
+                    <div class="crew-mode-toggle" role="radiogroup" aria-label="接单方式">
+                        <label class="crew-mode-option">
+                            <input type="radio" name="crew_mode" value="solo" id="crewModeSolo"
+                                <?= $postedCrewMode !== 'duo' ? 'checked' : '' ?>>
+                            <span>一人接单</span>
+                        </label>
+                        <label class="crew-mode-option">
+                            <input type="radio" name="crew_mode" value="duo" id="crewModeDuo"
+                                <?= $postedCrewMode === 'duo' ? 'checked' : '' ?>>
+                            <span>双人接单</span>
+                        </label>
+                    </div>
+                    <p class="order-no-hint">默认一人；一人按 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateBFullPct, 2, '.', ''), '0'), '.')) ?>% 结算，双人每人约一半</p>
+                </div>
+
+                <div class="form-group" id="coStaffGroup" <?= $postedCrewMode === 'duo' ? '' : 'hidden' ?>>
+                    <label>附加打手 <span class="required-mark">*</span></label>
                     <input type="hidden" name="co_staff_id" id="coStaffId"
                            value="<?= e((string) ($_POST['co_staff_id'] ?? '')) ?>">
                     <div class="co-staff-picker">
                         <input type="text" id="coStaffSearch" class="form-control"
                                placeholder="搜索昵称 / 用户名添加搭档"
-                               value="<?= e($coStaffLabel) ?>" autocomplete="off">
+                               value="<?= e($coStaffLabel) ?>" autocomplete="off"
+                               <?= $postedCrewMode === 'duo' ? '' : 'disabled' ?>>
                         <div class="co-staff-results" id="coStaffResults" hidden></div>
                         <div class="co-staff-selected" id="coStaffSelected" <?= $coStaffLabel === '' ? 'hidden' : '' ?>>
                             <span id="coStaffSelectedLabel"><?= e($coStaffLabel) ?></span>
                             <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
                         </div>
                     </div>
-                    <p class="order-no-hint">同一微信订单号只能报一次。添加后对方订单列表可见本单，到手金额默认两人平分。</p>
+                    <p class="order-no-hint">双人单须指定搭档；同一微信订单号只能报一次，对方订单列表可见，到手默认平分</p>
                 </div>
+                <?php else: ?>
+                <input type="hidden" name="crew_mode" value="solo">
                 <?php endif; ?>
 
                 <div class="form-group">
@@ -173,9 +202,13 @@ require __DIR__ . '/partials/head.php';
             <div class="amount-preview">
                 <div class="label">预计订单金额</div>
                 <div class="amount" id="previewAmount">¥0.00</div>
-                <div class="label" style="margin-top:10px;font-size:12px">预计到手合计 <?= SettlementService::formulaLabel() ?></div>
+                <div class="label" style="margin-top:10px;font-size:12px" id="previewFormula">
+                    <?= e(SettlementService::crewModeHint($postedCrewMode === 'duo')) ?>
+                </div>
                 <div class="amount" id="previewStaffAmount" style="font-size:22px;margin-top:4px">¥0.00</div>
-                <div class="label" id="previewShareHint" style="margin-top:8px;font-size:12px;display:none">双人单平分后你预计可得 <span id="previewMyShare">¥0.00</span></div>
+                <div class="label" id="previewShareHint" style="margin-top:8px;font-size:12px;display:none">
+                    你预计可得 <span id="previewMyShare">¥0.00</span>（另一半归附加打手）
+                </div>
             </div>
 
             <button type="submit" class="btn btn-primary btn-block-fixed">提交报单</button>
@@ -186,29 +219,93 @@ require __DIR__ . '/partials/head.php';
 </div>
 
 <script>
+const SETTLEMENT_RATE_A = <?= json_encode((float) $rates['rate_a']) ?>;
+const SETTLEMENT_RATE_B_HALF = <?= json_encode((float) $rates['rate_b']) ?>;
+const SETTLEMENT_RATE_B_FULL = Math.min(1, SETTLEMENT_RATE_B_HALF * 2);
+
+function formatMoneyYuan(n) {
+    return '¥' + Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function pctLabel(rate) {
+    const p = Math.round(rate * 10000) / 100;
+    return String(p).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+}
+
+function isDuoMode() {
+    const duo = document.getElementById('crewModeDuo');
+    return !!(duo && duo.checked);
+}
+
+function syncCrewModeUi() {
+    const duo = isDuoMode();
+    const group = document.getElementById('coStaffGroup');
+    const search = document.getElementById('coStaffSearch');
+    const hidden = document.getElementById('coStaffId');
+    if (group) group.hidden = !duo;
+    if (search) search.disabled = !duo;
+    if (!duo && hidden) {
+        hidden.value = '';
+        const selectedWrap = document.getElementById('coStaffSelected');
+        const selectedLabel = document.getElementById('coStaffSelectedLabel');
+        if (selectedWrap) selectedWrap.hidden = true;
+        if (selectedLabel) selectedLabel.textContent = '';
+        if (search) search.value = '';
+        const results = document.getElementById('coStaffResults');
+        if (results) {
+            results.hidden = true;
+            results.innerHTML = '';
+        }
+    }
+    updateAmount();
+}
+
 function updateAmount() {
     const select = document.getElementById('businessType');
     const option = select.options[select.selectedIndex];
     const price = parseFloat(option.dataset.price || 0);
     const qty = parseInt(document.getElementById('quantity').value || 0, 10);
-    const amount = (price * (qty > 0 ? qty : 0)).toFixed(2);
-    document.getElementById('previewAmount').textContent = '¥' + Number(amount).toLocaleString('zh-CN', {minimumFractionDigits: 2});
-    const staffAmount = parseFloat(amount) * 0.8 * 0.5;
-    document.getElementById('previewStaffAmount').textContent = '¥' + staffAmount.toLocaleString('zh-CN', {minimumFractionDigits: 2});
-    const hasCo = !!(document.getElementById('coStaffId')?.value);
+    const amount = price * (qty > 0 ? qty : 0);
+    document.getElementById('previewAmount').textContent = formatMoneyYuan(amount);
+
+    const duo = isDuoMode();
+    const pool = amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_B_FULL;
+    const formula = document.getElementById('previewFormula');
+    if (formula) {
+        formula.textContent = duo
+            ? ('双人接单 · 每人约 ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_B_HALF) + '%')
+            : ('一人接单 · ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_B_FULL) + '%（半份×2）');
+    }
+
     const hint = document.getElementById('previewShareHint');
-    if (hint) {
-        hint.style.display = hasCo ? 'block' : 'none';
-        if (hasCo) {
-            const mine = Math.round(staffAmount / 2 * 100) / 100;
-            document.getElementById('previewMyShare').textContent = '¥' + mine.toLocaleString('zh-CN', {minimumFractionDigits: 2});
+    if (duo) {
+        const mine = Math.round(pool / 2 * 100) / 100;
+        document.getElementById('previewStaffAmount').textContent = formatMoneyYuan(pool);
+        if (hint) {
+            hint.style.display = 'block';
+            document.getElementById('previewMyShare').textContent = formatMoneyYuan(mine);
         }
+    } else {
+        document.getElementById('previewStaffAmount').textContent = formatMoneyYuan(pool);
+        if (hint) hint.style.display = 'none';
     }
 }
 document.getElementById('businessType').addEventListener('change', updateAmount);
 document.getElementById('businessType').addEventListener('searchselect:change', updateAmount);
 document.getElementById('quantity').addEventListener('input', updateAmount);
-updateAmount();
+document.getElementById('crewModeSolo')?.addEventListener('change', syncCrewModeUi);
+document.getElementById('crewModeDuo')?.addEventListener('change', syncCrewModeUi);
+syncCrewModeUi();
+
+document.getElementById('reportForm')?.addEventListener('submit', function (e) {
+    if (!isDuoMode()) return;
+    const coId = document.getElementById('coStaffId')?.value;
+    if (!coId) {
+        e.preventDefault();
+        alert('双人接单请先搜索并选择附加打手');
+        document.getElementById('coStaffSearch')?.focus();
+    }
+});
 
 document.getElementById('screenshots')?.addEventListener('change', function(e) {
     const preview = document.getElementById('screenshotPreview');
