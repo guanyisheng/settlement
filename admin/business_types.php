@@ -124,6 +124,9 @@ require __DIR__ . '/partials/header.php';
                     <tr><th>ID</th><th>业务名称</th><th>单价</th><th>计价单位</th><th>备注</th><th>状态</th><th>操作</th></tr>
                 </thead>
                 <tbody>
+                <?php if ($businessTypes === []): ?>
+                    <tr><td colspan="7" style="text-align:center;color:var(--text-muted)"><?= $keyword !== '' ? '无匹配业务类型' : '暂无业务类型' ?></td></tr>
+                <?php else: ?>
                 <?php foreach ($businessTypes as $bt): ?>
                     <tr>
                         <td><?= $bt['id'] ?></td>
@@ -135,6 +138,7 @@ require __DIR__ . '/partials/header.php';
                         <td><button type="button" class="btn btn-sm" onclick="editBT(<?= htmlspecialchars(json_encode($bt), ENT_QUOTES) ?>)">编辑</button></td>
                     </tr>
                 <?php endforeach; ?>
+                <?php endif; ?>
                 </tbody>
             </table>
         </div>

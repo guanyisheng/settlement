@@ -87,7 +87,7 @@ require __DIR__ . '/partials/head.php';
                 <p class="order-no-hint">登录账号，不可修改</p>
             </div>
             <div class="form-group">
-                <label>昵称 / 打手名 <span class="required-mark">*</span></label>
+                <label>昵称 <span class="required-mark">*</span></label>
                 <input type="text" name="nickname" class="form-control" required
                        value="<?= e($userRow['nickname'] ?? '') ?>" placeholder="显示名称">
             </div>

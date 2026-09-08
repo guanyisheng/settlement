@@ -292,17 +292,18 @@ class UserService
 
     /**
      * 打手端「修改信息」：昵称、毛照、收款二维码、可选改密
+     * 凡能进入打手端的账号（老板/客服/打手等）均可改自己的资料
      */
     public static function updateOwnProfile(PDO $pdo, int $userId, array $data, array $files = []): void
     {
         $user = self::getById($pdo, $userId);
-        if (!$user || ($user['role'] ?? '') !== 'STAFF') {
-            throw new RuntimeException('仅打手可修改个人资料');
+        if (!$user || !empty($user['deleted_at'])) {
+            throw new RuntimeException('用户不存在');
         }
 
         $nickname = trim((string) ($data['nickname'] ?? ''));
         if ($nickname === '') {
-            throw new InvalidArgumentException('请填写昵称 / 打手名');
+            throw new InvalidArgumentException('请填写昵称');
         }
 
         $newPassword = (string) ($data['new_password'] ?? '');
@@ -369,23 +370,23 @@ class UserService
 
     public static function updateStaff(PDO $pdo, int $id, array $data, ?array $photoFile = null): void
     {
-        $staff = self::getStaffById($pdo, $id);
-        if (!$staff) {
-            throw new RuntimeException('打手不存在');
+        $staff = self::getById($pdo, $id);
+        if (!$staff || !empty($staff['deleted_at'])) {
+            throw new RuntimeException('用户不存在');
         }
 
         $nickname = trim($data['nickname'] ?? '');
         $status = isset($data['status']) ? (int) $data['status'] : (int) $staff['status'];
 
-        $stmt = $pdo->prepare('UPDATE users SET nickname = ?, status = ? WHERE id = ? AND role = ?');
-        $stmt->execute([$nickname, $status, $id, 'STAFF']);
+        $stmt = $pdo->prepare('UPDATE users SET nickname = ?, status = ? WHERE id = ?');
+        $stmt->execute([$nickname, $status, $id]);
 
         self::updateStaffProfile($pdo, $id, $data, $photoFile, $staff['username']);
     }
 
     public static function resetStaffPassword(PDO $pdo, int $id, string $password): void
     {
-        self::resetUserPassword($pdo, $id, 'STAFF', $password);
+        self::resetPasswordById($pdo, $id, $password);
     }
 
     public static function deleteStaff(PDO $pdo, int $id): void
@@ -542,7 +543,7 @@ class UserService
         if (!$user) {
             throw new RuntimeException('员工不存在');
         }
-        self::resetUserPassword($pdo, $id, $user['role'], $password);
+        self::resetPasswordById($pdo, $id, $password);
     }
 
     public static function deleteEmployee(PDO $pdo, int $id): void
@@ -584,7 +585,7 @@ class UserService
      * @param int|null $roleId 按角色筛选（roles.id）；null=全部
      * @return array<int, array>
      */
-    public static function getUnifiedUserList(PDO $pdo, ?string $keyword = null, ?int $roleId = null): array
+    public static function getUnifiedUserList(PDO $pdo, ?string $keyword = null, ?int $roleId = null, ?string $roleCode = null): array
     {
         $keyword = trim((string) $keyword);
         $params = [];
@@ -616,19 +617,11 @@ class UserService
                 ))';
                 $params[] = $roleId;
                 $params[] = $roleId;
-            } else {
-                $stmt = $pdo->prepare('SELECT code FROM roles WHERE id = ? LIMIT 1');
-                try {
-                    $stmt->execute([$roleId]);
-                    $code = (string) ($stmt->fetchColumn() ?: '');
-                } catch (PDOException) {
-                    $code = '';
-                }
-                if ($code !== '') {
-                    $where[] = 'u.role = ?';
-                    $params[] = $code === 'ADMIN' ? 'BOSS' : $code;
-                }
             }
+        } elseif ($roleCode !== null && $roleCode !== '') {
+            $code = $roleCode === 'ADMIN' ? 'BOSS' : $roleCode;
+            $where[] = 'u.role = ?';
+            $params[] = $code;
         }
 
         $sql = 'SELECT u.* FROM users u WHERE ' . implode(' AND ', $where)
@@ -677,7 +670,7 @@ class UserService
         $deposit = $deposit !== '' ? $deposit : null;
 
         $stmt = $pdo->prepare(
-            "UPDATE users SET hired_at = ?, examiner = ?, deposit = ? WHERE id = ? AND role = 'STAFF'"
+            'UPDATE users SET hired_at = ?, examiner = ?, deposit = ? WHERE id = ?'
         );
         $stmt->execute([$hiredAt, $examiner, $deposit, $id]);
 
@@ -737,17 +730,36 @@ class UserService
     {
         $nickname = trim($data['nickname'] ?? '');
         $status = isset($data['status']) ? (int) $data['status'] : 1;
+        $newRole = $role;
+        if (isset($data['role']) && is_string($data['role']) && $data['role'] !== '') {
+            $candidate = $data['role'] === 'ADMIN' ? 'BOSS' : $data['role'];
+            if (in_array($candidate, ['STAFF', 'CUSTOMER_SERVICE', 'EXAMINER', 'BOSS'], true)) {
+                $newRole = $candidate;
+            }
+        }
 
-        $stmt = $pdo->prepare('UPDATE users SET nickname = ?, status = ? WHERE id = ? AND role = ?');
-        $stmt->execute([$nickname, $status, $id, $role]);
+        $stmt = $pdo->prepare('UPDATE users SET nickname = ?, status = ?, role = ? WHERE id = ?');
+        $stmt->execute([$nickname, $status, $newRole, $id]);
     }
 
     private static function resetUserPassword(PDO $pdo, int $id, string $role, string $password): void
     {
+        self::resetPasswordById($pdo, $id, $password);
+    }
+
+    private static function resetPasswordById(PDO $pdo, int $id, string $password): void
+    {
         if (strlen($password) < 6) {
             throw new InvalidArgumentException('密码至少6位');
         }
-        $stmt = $pdo->prepare('UPDATE users SET password = ? WHERE id = ? AND role = ?');
-        $stmt->execute([password_hash($password, PASSWORD_DEFAULT), $id, $role]);
+        $stmt = $pdo->prepare('UPDATE users SET password = ? WHERE id = ?');
+        $stmt->execute([password_hash($password, PASSWORD_DEFAULT), $id]);
+        if ($stmt->rowCount() === 0) {
+            $check = $pdo->prepare('SELECT id FROM users WHERE id = ?');
+            $check->execute([$id]);
+            if (!$check->fetch()) {
+                throw new RuntimeException('用户不存在');
+            }
+        }
     }
 }

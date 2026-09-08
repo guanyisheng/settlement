@@ -84,27 +84,61 @@ class DashboardService
         ];
     }
 
-    /** 老板端数据统计；$rangeKey: today|yesterday|week|last_week|month|last_month|all */
-    public static function getBossStatistics(PDO $pdo, string $rangeKey = 'month'): array
-    {
+    /**
+     * 老板端数据统计
+     * $rangeKey: today|yesterday|week|last_week|month|last_month|all|custom
+     * custom 时传 $from/$to（Y-m-d）
+     */
+    public static function getBossStatistics(
+        PDO $pdo,
+        string $rangeKey = 'month',
+        ?string $from = null,
+        ?string $to = null
+    ): array {
         $base = self::getBossStatisticsBase($pdo);
-        $range = self::resolveDateRange($rangeKey);
+        $range = self::resolveDateRange($rangeKey, $from, $to);
         $base['range'] = $range;
         $base['range_metrics'] = self::getRangeMetrics($pdo, $range['from'], $range['to']);
         try {
             $base['overview']['prepaid_balance'] = (float) $pdo->query(
-                'SELECT COALESCE(SUM(balance), 0) FROM customers WHERE status = 1'
+                "SELECT COALESCE(SUM(balance), 0) FROM customers WHERE status = 1 AND is_prepaid = 1"
             )->fetchColumn();
         } catch (PDOException) {
-            $base['overview']['prepaid_balance'] = 0.0;
+            try {
+                $base['overview']['prepaid_balance'] = (float) $pdo->query(
+                    'SELECT COALESCE(SUM(balance), 0) FROM customers WHERE status = 1'
+                )->fetchColumn();
+            } catch (PDOException) {
+                $base['overview']['prepaid_balance'] = 0.0;
+            }
         }
         return $base;
     }
 
     /** @return array{key:string,label:string,from:?string,to:?string} */
-    public static function resolveDateRange(string $key): array
+    public static function resolveDateRange(string $key, ?string $from = null, ?string $to = null): array
     {
         $today = date('Y-m-d');
+        if ($key === 'custom') {
+            $fromDate = self::normalizeDate($from);
+            $toDate = self::normalizeDate($to);
+            if ($fromDate === null || $toDate === null) {
+                return [
+                    'key' => 'month', 'label' => '本月',
+                    'from' => date('Y-m-01'), 'to' => $today,
+                ];
+            }
+            if ($fromDate > $toDate) {
+                [$fromDate, $toDate] = [$toDate, $fromDate];
+            }
+            return [
+                'key' => 'custom',
+                'label' => $fromDate . ' ~ ' . $toDate,
+                'from' => $fromDate,
+                'to' => $toDate,
+            ];
+        }
+
         return match ($key) {
             'today' => [
                 'key' => 'today', 'label' => '今天',
@@ -141,29 +175,42 @@ class DashboardService
         };
     }
 
+    private static function normalizeDate(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+        $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        if (!$dt || $dt->format('Y-m-d') !== $value) {
+            return null;
+        }
+        return $value;
+    }
+
     /** @return array{orders:int,flow:float,withdraw:float,commission:float} */
     public static function getRangeMetrics(PDO $pdo, ?string $from, ?string $to): array
     {
         $alive = self::alive();
-        $orderDate = '';
         $reviewDate = '';
         $withdrawDate = '';
-        $paramsOrders = [];
         $paramsReview = [];
         $paramsWithdraw = [];
 
         if ($from !== null && $to !== null) {
-            $orderDate = ' AND DATE(created_at) BETWEEN ? AND ?';
+            // 结算区统一按审核日（reviewed_at）；未审核单不计入订单数/流水/抽成
             $reviewDate = ' AND DATE(reviewed_at) BETWEEN ? AND ?';
             $withdrawDate = ' AND DATE(COALESCE(updated_at, created_at)) BETWEEN ? AND ?';
-            $paramsOrders = [$from, $to];
             $paramsReview = [$from, $to];
             $paramsWithdraw = [$from, $to];
         }
 
         try {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE {$alive}{$orderDate}");
-            $stmt->execute($paramsOrders);
+            $stmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM orders
+                 WHERE status IN ('APPROVED','SETTLED') AND {$alive}{$reviewDate}"
+            );
+            $stmt->execute($paramsReview);
             $orders = (int) $stmt->fetchColumn();
 
             $stmt = $pdo->prepare(
@@ -173,8 +220,9 @@ class DashboardService
             $stmt->execute($paramsReview);
             $flow = (float) $stmt->fetchColumn();
 
+            // 与余额口径一致：无 staff_amount 时按整单金额视作打手所得，抽成为 0
             $stmt = $pdo->prepare(
-                "SELECT COALESCE(SUM(amount - COALESCE(staff_amount, 0)), 0) FROM orders
+                "SELECT COALESCE(SUM(amount - COALESCE(staff_amount, amount)), 0) FROM orders
                  WHERE status IN ('APPROVED','SETTLED') AND {$alive}{$reviewDate}"
             );
             $stmt->execute($paramsReview);

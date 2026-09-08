@@ -27,16 +27,27 @@ $qs = static function () : string {
     if (!empty($_GET['role_id'])) {
         $parts[] = 'role_id=' . (int) $_GET['role_id'];
     }
+    if (!empty($_GET['role_code'])) {
+        $parts[] = 'role_code=' . urlencode((string) $_GET['role_code']);
+    }
     return $parts === [] ? '' : ('?' . implode('&', $parts));
 };
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+    $canManageStaff = Auth::can('staff.manage') || Auth::isBoss();
+    $canManageUsers = Auth::can('user.manage') || Auth::isBoss();
     try {
         if ($action === 'create_staff') {
+            if (!$canManageStaff) {
+                throw new RuntimeException('无权限添加打手');
+            }
             UserService::createStaff($pdo, $_POST, $_FILES['photos'] ?? null);
             flash('success', '打手添加成功');
         } elseif ($action === 'create_employee') {
+            if (!$canManageUsers) {
+                throw new RuntimeException('无权限添加员工');
+            }
             if ($rbac && empty($_POST['role_ids'])) {
                 throw new InvalidArgumentException('请至少勾选一个角色');
             }
@@ -44,13 +55,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', '员工添加成功');
         } elseif ($action === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
+            if ($id === (int) Auth::id()) {
+                throw new RuntimeException('不能删除当前登录账号');
+            }
             $row = UserService::getById($pdo, $id);
             if (!$row) {
                 throw new RuntimeException('用户不存在');
             }
-            if (UserService::userIsStaffLike($pdo, $row) && ($row['role'] ?? '') === 'STAFF') {
+            $isStaffRow = UserService::userIsStaffLike($pdo, $row) && ($row['role'] ?? '') === 'STAFF';
+            if ($isStaffRow) {
+                if (!$canManageStaff) {
+                    throw new RuntimeException('无权限删除打手');
+                }
                 UserService::deleteStaff($pdo, $id);
             } else {
+                if (!$canManageUsers) {
+                    throw new RuntimeException('无权限删除员工');
+                }
                 UserService::deleteEmployee($pdo, $id);
             }
             flash('success', '用户已删除/停用');
@@ -60,12 +81,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$row) {
                 throw new RuntimeException('用户不存在');
             }
-            if (($row['role'] ?? '') === 'STAFF') {
+            $isStaffRow = ($row['role'] ?? '') === 'STAFF';
+            if ($isStaffRow && !$canManageStaff) {
+                throw new RuntimeException('无权限重置打手密码');
+            }
+            if (!$isStaffRow && !$canManageUsers) {
+                throw new RuntimeException('无权限重置员工密码');
+            }
+            if ($isStaffRow) {
                 UserService::resetStaffPassword($pdo, $id, $_POST['password'] ?? '');
             } else {
                 UserService::resetEmployeePassword($pdo, $id, $_POST['password'] ?? '');
             }
             flash('success', '密码已重置');
+        } else {
+            throw new InvalidArgumentException('无效操作');
         }
         redirect('/admin/users.php' . $qs());
     } catch (Throwable $e) {
@@ -74,10 +104,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$canManageStaff = Auth::can('staff.manage') || Auth::isBoss();
+$canManageUsers = Auth::can('user.manage') || Auth::isBoss();
+
 $keyword = trim((string) ($_GET['q'] ?? ''));
 $roleId = (int) ($_GET['role_id'] ?? 0);
 $roleId = $roleId > 0 ? $roleId : null;
-$users = UserService::getUnifiedUserList($pdo, $keyword, $roleId);
+$roleCode = trim((string) ($_GET['role_code'] ?? ''));
+$roleCode = $roleCode !== '' ? $roleCode : null;
+$users = UserService::getUnifiedUserList($pdo, $keyword, $roleId, $roleCode);
 
 $userRoles = [];
 $balances = [];
@@ -106,14 +141,20 @@ $statusLabel = static function (int $status): string {
 <?php renderAlertError($error); ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 
+<?php if ($canManageStaff || $canManageUsers): ?>
 <div class="card">
     <div class="card-header"><h2>添加用户</h2></div>
     <div class="card-body">
         <div class="tab-strip" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <?php if ($canManageStaff): ?>
             <button type="button" class="btn btn-sm btn-primary" id="tabStaffBtn" onclick="showCreateTab('staff')">添加打手</button>
-            <button type="button" class="btn btn-sm" id="tabEmpBtn" onclick="showCreateTab('employee')">添加员工</button>
+            <?php endif; ?>
+            <?php if ($canManageUsers): ?>
+            <button type="button" class="btn btn-sm <?= $canManageStaff ? '' : 'btn-primary' ?>" id="tabEmpBtn" onclick="showCreateTab('employee')">添加员工</button>
+            <?php endif; ?>
         </div>
 
+        <?php if ($canManageStaff): ?>
         <form method="post" enctype="multipart/form-data" id="createStaffForm">
             <input type="hidden" name="action" value="create_staff">
             <div class="form-row">
@@ -133,13 +174,24 @@ $statusLabel = static function (int $status): string {
                 </div>
             </div>
         </form>
+        <?php endif; ?>
 
-        <form method="post" id="createEmpForm" style="display:none">
+        <?php if ($canManageUsers): ?>
+        <form method="post" id="createEmpForm" style="<?= $canManageStaff ? 'display:none' : '' ?>">
             <input type="hidden" name="action" value="create_employee">
             <div class="form-row">
                 <div class="form-group"><label>用户名</label><input type="text" name="username" class="form-control" required></div>
                 <div class="form-group"><label>昵称</label><input type="text" name="nickname" class="form-control"></div>
                 <div class="form-group"><label>密码</label><input type="password" name="password" class="form-control" required minlength="6"></div>
+                <?php if (!$rbac): ?>
+                <div class="form-group">
+                    <label>角色</label>
+                    <select name="role" class="form-control" required>
+                        <option value="CUSTOMER_SERVICE">客服</option>
+                        <option value="EXAMINER">考官</option>
+                    </select>
+                </div>
+                <?php endif; ?>
             </div>
             <?php if ($rbac && $allRoles !== []): ?>
             <div class="form-group">
@@ -158,13 +210,16 @@ $statusLabel = static function (int $status): string {
             <?php endif; ?>
             <button type="submit" class="btn btn-primary">添加员工</button>
         </form>
+        <?php endif; ?>
     </div>
 </div>
+<?php endif; ?>
 
 <div class="card">
     <div class="card-header" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
         <h2 style="margin:0">用户列表 (<?= count($users) ?>)</h2>
         <form method="get" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <?php if ($rbac): ?>
             <select name="role_id" class="form-control" style="width:auto;min-width:140px">
                 <option value="">全部职位</option>
                 <?php foreach ($allRoles as $r): ?>
@@ -173,10 +228,18 @@ $statusLabel = static function (int $status): string {
                     </option>
                 <?php endforeach; ?>
             </select>
+            <?php else: ?>
+            <select name="role_code" class="form-control" style="width:auto;min-width:140px">
+                <option value="">全部职位</option>
+                <?php foreach (['STAFF' => '打手', 'CUSTOMER_SERVICE' => '客服', 'EXAMINER' => '考官', 'BOSS' => '老板'] as $code => $name): ?>
+                    <option value="<?= $code ?>" <?= $roleCode === $code ? 'selected' : '' ?>><?= e($name) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <?php endif; ?>
             <input type="search" name="q" class="form-control" style="width:200px" placeholder="搜用户名/昵称/ID"
                    value="<?= e($keyword) ?>">
             <button type="submit" class="btn btn-sm btn-primary">筛选</button>
-            <?php if ($keyword !== '' || $roleId): ?>
+            <?php if ($keyword !== '' || $roleId || $roleCode): ?>
                 <a href="/admin/users.php" class="btn btn-sm">清除</a>
             <?php endif; ?>
         </form>
@@ -202,6 +265,9 @@ $statusLabel = static function (int $status): string {
                             ? implode('&', array_map(static fn($r) => $r['name'], $roles))
                             : roleLabel((string) ($u['role'] ?? ''));
                         $bal = $balances[$uid] ?? ['total_income' => 0, 'available_balance' => 0];
+                        $rowIsStaff = ($u['role'] ?? '') === 'STAFF';
+                        $canResetRow = $rowIsStaff ? $canManageStaff : $canManageUsers;
+                        $canDeleteRow = $canResetRow && $uid !== (int) Auth::id();
                         ?>
                         <tr>
                             <td><?= $uid ?></td>
@@ -215,12 +281,16 @@ $statusLabel = static function (int $status): string {
                             <td><?= e($statusLabel((int) ($u['status'] ?? 0))) ?></td>
                             <td class="actions">
                                 <a class="btn btn-sm" href="/admin/user_detail.php?id=<?= $uid ?>">详细</a>
-                                <button type="button" class="btn btn-sm" onclick="openReset(<?= $uid ?>, '<?= e($u['username']) ?>')">重置密码</button>
+                                <?php if ($canResetRow): ?>
+                                <button type="button" class="btn btn-sm" data-reset-id="<?= $uid ?>" data-reset-name="<?= e($u['username']) ?>" onclick="openResetEl(this)">重置密码</button>
+                                <?php endif; ?>
+                                <?php if ($canDeleteRow): ?>
                                 <form method="post" style="display:inline" onsubmit="return confirm('确认删除/停用该用户？')">
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="id" value="<?= $uid ?>">
                                     <button type="submit" class="btn btn-sm btn-danger">删除</button>
                                 </form>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -231,7 +301,7 @@ $statusLabel = static function (int $status): string {
     </div>
 </div>
 
-<div id="resetModal" class="modal" hidden>
+<div id="resetModal" hidden>
     <div class="modal-dialog">
         <form method="post">
             <input type="hidden" name="action" value="reset_password">
@@ -255,21 +325,22 @@ function showCreateTab(which) {
     const emp = document.getElementById('createEmpForm');
     const b1 = document.getElementById('tabStaffBtn');
     const b2 = document.getElementById('tabEmpBtn');
-    if (which === 'staff') {
+    if (!staff && !emp) return;
+    if (which === 'staff' && staff) {
         staff.style.display = '';
-        emp.style.display = 'none';
-        b1.classList.add('btn-primary');
-        b2.classList.remove('btn-primary');
-    } else {
-        staff.style.display = 'none';
+        if (emp) emp.style.display = 'none';
+        b1 && b1.classList.add('btn-primary');
+        b2 && b2.classList.remove('btn-primary');
+    } else if (emp) {
+        if (staff) staff.style.display = 'none';
         emp.style.display = '';
-        b2.classList.add('btn-primary');
-        b1.classList.remove('btn-primary');
+        b2 && b2.classList.add('btn-primary');
+        b1 && b1.classList.remove('btn-primary');
     }
 }
-function openReset(id, name) {
-    document.getElementById('resetUserId').value = id;
-    document.getElementById('resetUsername').textContent = name;
+function openResetEl(el) {
+    document.getElementById('resetUserId').value = el.dataset.resetId;
+    document.getElementById('resetUsername').textContent = el.dataset.resetName || '';
     document.getElementById('resetModal').hidden = false;
 }
 function closeReset() {
