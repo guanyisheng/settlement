@@ -84,11 +84,19 @@ class DashboardService
         ];
     }
 
-    /** 老板端数据统计；$rangeKey: today|yesterday|week|last_week|month|last_month|all */
-    public static function getBossStatistics(PDO $pdo, string $rangeKey = 'month'): array
-    {
+    /**
+     * 老板端数据统计
+     * $rangeKey: today|yesterday|week|last_week|month|last_month|all|custom
+     * custom 时传 $from/$to（Y-m-d）
+     */
+    public static function getBossStatistics(
+        PDO $pdo,
+        string $rangeKey = 'month',
+        ?string $from = null,
+        ?string $to = null
+    ): array {
         $base = self::getBossStatisticsBase($pdo);
-        $range = self::resolveDateRange($rangeKey);
+        $range = self::resolveDateRange($rangeKey, $from, $to);
         $base['range'] = $range;
         $base['range_metrics'] = self::getRangeMetrics($pdo, $range['from'], $range['to']);
         try {
@@ -108,9 +116,29 @@ class DashboardService
     }
 
     /** @return array{key:string,label:string,from:?string,to:?string} */
-    public static function resolveDateRange(string $key): array
+    public static function resolveDateRange(string $key, ?string $from = null, ?string $to = null): array
     {
         $today = date('Y-m-d');
+        if ($key === 'custom') {
+            $fromDate = self::normalizeDate($from);
+            $toDate = self::normalizeDate($to);
+            if ($fromDate === null || $toDate === null) {
+                return [
+                    'key' => 'month', 'label' => '本月',
+                    'from' => date('Y-m-01'), 'to' => $today,
+                ];
+            }
+            if ($fromDate > $toDate) {
+                [$fromDate, $toDate] = [$toDate, $fromDate];
+            }
+            return [
+                'key' => 'custom',
+                'label' => $fromDate . ' ~ ' . $toDate,
+                'from' => $fromDate,
+                'to' => $toDate,
+            ];
+        }
+
         return match ($key) {
             'today' => [
                 'key' => 'today', 'label' => '今天',
@@ -145,6 +173,19 @@ class DashboardService
                 'from' => date('Y-m-01'), 'to' => $today,
             ],
         };
+    }
+
+    private static function normalizeDate(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+        $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        if (!$dt || $dt->format('Y-m-d') !== $value) {
+            return null;
+        }
+        return $value;
     }
 
     /** @return array{orders:int,flow:float,withdraw:float,commission:float} */

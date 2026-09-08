@@ -43,17 +43,17 @@ $error = flash('error');
 $success = flash('success');
 
 $assignableRoles = [];
+$canEditRoles = Auth::isBoss() || Auth::can('user.manage') || Auth::can('role.manage');
 if ($rbac) {
-    $assignableRoles = RoleService::listAssignableForEmployees($pdo);
+    // 老板可分配全部角色（含打手/老板）；其他管理员只能分配员工向角色，但保留对方已有角色以免保存时被抹掉
     if (Auth::isBoss()) {
+        $assignableRoles = RoleService::listRoles($pdo, false);
+    } else {
+        $assignableRoles = RoleService::listAssignableForEmployees($pdo);
         $seen = array_flip(array_map(static fn($r) => (int) $r['id'], $assignableRoles));
-        foreach (RoleService::listRoles($pdo, false) as $r) {
-            $code = (string) ($r['code'] ?? '');
-            if (!in_array($code, ['STAFF', 'BOSS'], true)) {
-                continue;
-            }
-            $rid = (int) $r['id'];
-            if (!isset($seen[$rid])) {
+        foreach (PermissionService::getUserRoles($pdo, $userId) as $r) {
+            $rid = (int) ($r['id'] ?? 0);
+            if ($rid > 0 && !isset($seen[$rid])) {
                 $assignableRoles[] = $r;
                 $seen[$rid] = true;
             }
@@ -61,74 +61,38 @@ if ($rbac) {
     }
 }
 
-/**
- * 更新打手档案字段（不限制 legacy role = STAFF，兼容多角色）
- */
-$updateStaffProfileFields = static function (PDO $pdo, int $id, array $data): void {
-    $hiredAt = trim((string) ($data['hired_at'] ?? ''));
-    $hiredAt = $hiredAt !== '' ? $hiredAt : null;
-    $examiner = trim((string) ($data['examiner'] ?? ''));
-    $examiner = $examiner !== '' ? $examiner : null;
-    $deposit = trim((string) ($data['deposit'] ?? ''));
-    $deposit = $deposit !== '' ? $deposit : null;
-
-    try {
-        $stmt = $pdo->prepare('UPDATE users SET hired_at = ?, examiner = ?, deposit = ? WHERE id = ?');
-        $stmt->execute([$hiredAt, $examiner, $deposit, $id]);
-    } catch (PDOException $e) {
-        // 旧库无档案列时跳过
-        if (str_contains($e->getMessage(), 'Unknown column')) {
-            return;
-        }
-        throw $e;
-    }
-};
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     try {
         if ($action === 'update_profile') {
-            if ($isStaffLike) {
-                if (($detailUser['role'] ?? '') === 'STAFF') {
-                    UserService::updateStaff($pdo, $userId, $_POST, null);
-                } else {
-                    UserService::updateEmployee($pdo, $userId, [
-                        'nickname' => $_POST['nickname'] ?? '',
-                        'status'   => $_POST['status'] ?? ($detailUser['status'] ?? 1),
-                    ]);
-                    $updateStaffProfileFields($pdo, $userId, $_POST);
+            $payload = [
+                'nickname' => $_POST['nickname'] ?? '',
+                'status'   => $_POST['status'] ?? ($detailUser['status'] ?? 1),
+            ];
+            if (!$rbac && isset($_POST['role'])) {
+                $payload['role'] = (string) $_POST['role'];
+            }
+            if ($rbac && $canEditRoles && $assignableRoles !== []) {
+                if (empty($_POST['role_ids']) || !is_array($_POST['role_ids'])) {
+                    throw new InvalidArgumentException('请至少勾选一个角色');
                 }
-                // 打手向也可改角色（老板/有用户管理权限）
-                if ($rbac && (Auth::can('user.manage') || Auth::isBoss()) && isset($_POST['role_ids']) && is_array($_POST['role_ids'])) {
-                    if ($_POST['role_ids'] === []) {
-                        throw new InvalidArgumentException('请至少勾选一个角色');
-                    }
-                    RoleService::setUserRoles($pdo, $userId, $_POST['role_ids']);
+                $payload['role_ids'] = $_POST['role_ids'];
+            }
+
+            if ($isStaffLike || ($detailUser['role'] ?? '') === 'STAFF') {
+                UserService::updateStaff($pdo, $userId, array_merge($_POST, $payload), null);
+                if ($rbac && isset($payload['role_ids'])) {
+                    RoleService::setUserRoles($pdo, $userId, $payload['role_ids']);
+                } elseif (!$rbac && isset($payload['role'])) {
+                    UserService::updateEmployee($pdo, $userId, $payload);
                 }
             } else {
-                $payload = [
-                    'nickname' => $_POST['nickname'] ?? '',
-                    'status'   => $_POST['status'] ?? ($detailUser['status'] ?? 1),
-                ];
-                if (!$rbac && isset($_POST['role'])) {
-                    $payload['role'] = (string) $_POST['role'];
-                }
-                if ($rbac && $assignableRoles !== []) {
-                    if (empty($_POST['role_ids']) || !is_array($_POST['role_ids'])) {
-                        throw new InvalidArgumentException('请至少勾选一个角色');
-                    }
-                    $payload['role_ids'] = $_POST['role_ids'];
-                }
                 UserService::updateEmployee($pdo, $userId, $payload);
             }
             flash('success', '档案已更新');
         } elseif ($action === 'reset_password') {
             $password = (string) ($_POST['password'] ?? '');
-            if (($detailUser['role'] ?? '') === 'STAFF') {
-                UserService::resetStaffPassword($pdo, $userId, $password);
-            } else {
-                UserService::resetEmployeePassword($pdo, $userId, $password);
-            }
+            UserService::resetEmployeePassword($pdo, $userId, $password);
             flash('success', '密码已重置');
         } elseif ($isStaffLike && $action === 'upload_photos') {
             StaffPhotoService::uploadMany(
@@ -275,7 +239,7 @@ require __DIR__ . '/partials/header.php';
                     </div>
                 </div>
                 <p style="font-size:12px;color:var(--text-muted);margin:8px 0 16px">注册时间：<?= formatDateTime($detailUser['created_at'] ?? null) ?></p>
-                <?php if ($rbac && $assignableRoles !== [] && (Auth::can('user.manage') || Auth::isBoss())): ?>
+                <?php if ($rbac && $assignableRoles !== [] && $canEditRoles): ?>
                     <div class="form-group" style="margin-top:12px">
                         <label>角色（可多选）</label>
                         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
@@ -312,7 +276,7 @@ require __DIR__ . '/partials/header.php';
                         </select>
                     </div>
                 </div>
-                <?php if ($rbac && $assignableRoles !== []): ?>
+                <?php if ($rbac && $assignableRoles !== [] && $canEditRoles): ?>
                     <div class="form-group" style="margin-top:12px">
                         <label>角色（可多选）</label>
                         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
@@ -326,7 +290,7 @@ require __DIR__ . '/partials/header.php';
                             <?php endforeach; ?>
                         </div>
                     </div>
-                <?php elseif (!$rbac): ?>
+                <?php elseif (!$rbac && $canEditRoles): ?>
                     <div class="form-group" style="margin-top:12px">
                         <label>角色</label>
                         <select name="role" class="form-control">

@@ -11,16 +11,30 @@ Auth::requirePage('statistics');
 
 $pdo = Database::getConnection();
 $rangeKey = (string) ($_GET['range'] ?? 'month');
-$allowedRanges = ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'all'];
+$customFrom = trim((string) ($_GET['from'] ?? ''));
+$customTo = trim((string) ($_GET['to'] ?? ''));
+$allowedRanges = ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'all', 'custom'];
 if (!in_array($rangeKey, $allowedRanges, true)) {
     $rangeKey = 'month';
 }
-$data = DashboardService::getBossStatistics($pdo, $rangeKey);
+if ($rangeKey === 'custom' && ($customFrom === '' || $customTo === '')) {
+    $rangeKey = 'month';
+}
+$data = DashboardService::getBossStatistics(
+    $pdo,
+    $rangeKey,
+    $rangeKey === 'custom' ? $customFrom : null,
+    $rangeKey === 'custom' ? $customTo : null
+);
 $overview = $data['overview'];
 $period = $data['period'];
 $byStatus = $data['by_status'];
-$range = $data['range'] ?? DashboardService::resolveDateRange($rangeKey);
+$range = $data['range'] ?? DashboardService::resolveDateRange($rangeKey, $customFrom, $customTo);
 $rangeMetrics = $data['range_metrics'] ?? ['orders' => 0, 'flow' => 0.0, 'withdraw' => 0.0, 'commission' => 0.0];
+if (($range['key'] ?? '') === 'custom') {
+    $customFrom = (string) ($range['from'] ?? $customFrom);
+    $customTo = (string) ($range['to'] ?? $customTo);
+}
 $statusLabels = [
     'PENDING'  => '待审核',
     'APPROVED' => '已通过',
@@ -79,9 +93,24 @@ $rangeLinks = [
                 <a class="range-chip <?= $rangeKey === $key ? 'active' : '' ?>"
                    href="?range=<?= e($key) ?>"><?= e($label) ?></a>
             <?php endforeach; ?>
+            <span class="range-chip <?= $rangeKey === 'custom' ? 'active' : '' ?>" style="cursor:default">自定义</span>
         </div>
     </div>
     <div class="card-body">
+        <form method="get" class="range-custom-form" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:16px">
+            <input type="hidden" name="range" value="custom">
+            <div class="form-group" style="margin:0">
+                <label>开始日期</label>
+                <input type="date" name="from" class="form-control" required
+                       value="<?= e($customFrom !== '' ? $customFrom : date('Y-m-01')) ?>">
+            </div>
+            <div class="form-group" style="margin:0">
+                <label>结束日期</label>
+                <input type="date" name="to" class="form-control" required
+                       value="<?= e($customTo !== '' ? $customTo : date('Y-m-d')) ?>">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">按日期查询</button>
+        </form>
         <div class="stats-grid" style="margin:0">
             <div class="stat-card">
                 <div class="label">订单数（已通过）</div>
