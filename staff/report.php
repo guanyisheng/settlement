@@ -83,6 +83,53 @@ require __DIR__ . '/partials/head.php';
             <div class="form-section">
                 <div class="form-section-title">报单信息</div>
 
+                <?php if ($coStaffEnabled): ?>
+                <div class="form-group">
+                    <label>接单方式 <span class="required-mark">*</span></label>
+                    <div class="crew-mode-toggle" role="radiogroup" aria-label="接单方式">
+                        <label class="crew-mode-option" for="crewModeSolo">
+                            <input type="radio" name="crew_mode" value="solo" id="crewModeSolo"
+                                <?= $postedCrewMode !== 'duo' ? 'checked' : '' ?>>
+                            <span>一人接单</span>
+                        </label>
+                        <label class="crew-mode-option" for="crewModeDuo">
+                            <input type="radio" name="crew_mode" value="duo" id="crewModeDuo"
+                                <?= $postedCrewMode === 'duo' ? 'checked' : '' ?>>
+                            <span>双人接单</span>
+                        </label>
+                    </div>
+                    <p class="order-no-hint">默认一人；一人 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateSoloPct, 2, '.', ''), '0'), '.')) ?>%，双人每人 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateDuoPct, 2, '.', ''), '0'), '.')) ?>%</p>
+                </div>
+
+                <div class="form-group co-staff-group <?= $postedCrewMode === 'duo' ? 'is-open' : '' ?>" id="coStaffGroup">
+                    <label for="coStaffSearch">附加打手 <span class="required-mark">*</span></label>
+                    <input type="hidden" name="co_staff_id" id="coStaffId"
+                           value="<?= e((string) ($_POST['co_staff_id'] ?? '')) ?>">
+                    <div class="co-staff-picker">
+                        <div class="co-staff-search-row">
+                            <input type="search" id="coStaffSearch" class="form-control co-staff-search-input"
+                                   placeholder="输入昵称或用户名"
+                                   value=""
+                                   autocomplete="off"
+                                   autocorrect="off"
+                                   autocapitalize="off"
+                                   spellcheck="false"
+                                   enterkeyhint="search"
+                                   inputmode="search">
+                            <button type="button" class="btn btn-primary" id="coStaffSearchBtn">搜索</button>
+                        </div>
+                        <div class="co-staff-results" id="coStaffResults" hidden></div>
+                        <div class="co-staff-selected" id="coStaffSelected" <?= $coStaffLabel === '' ? 'hidden' : '' ?>>
+                            <span id="coStaffSelectedLabel"><?= e($coStaffLabel) ?></span>
+                            <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
+                        </div>
+                    </div>
+                    <p class="order-no-hint">选「双人接单」后会出现此处。输入后点「搜索」，再点选搭档。</p>
+                </div>
+                <?php else: ?>
+                <input type="hidden" name="crew_mode" value="solo">
+                <?php endif; ?>
+
                 <div class="form-group">
                     <label>选择客户 <span class="required-mark">*</span></label>
                     <input type="text" id="customerSearch" class="form-control search-select-input"
@@ -113,48 +160,6 @@ require __DIR__ . '/partials/head.php';
                         <?php endforeach; ?>
                     </select>
                 </div>
-
-                <?php if ($coStaffEnabled): ?>
-                <div class="form-group">
-                    <label>接单方式 <span class="required-mark">*</span></label>
-                    <div class="crew-mode-toggle" role="radiogroup" aria-label="接单方式">
-                        <label class="crew-mode-option" for="crewModeSolo">
-                            <input type="radio" name="crew_mode" value="solo" id="crewModeSolo"
-                                <?= $postedCrewMode !== 'duo' ? 'checked' : '' ?>>
-                            <span>一人接单</span>
-                        </label>
-                        <label class="crew-mode-option" for="crewModeDuo">
-                            <input type="radio" name="crew_mode" value="duo" id="crewModeDuo"
-                                <?= $postedCrewMode === 'duo' ? 'checked' : '' ?>>
-                            <span>双人接单</span>
-                        </label>
-                    </div>
-                    <p class="order-no-hint">默认一人；一人 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateSoloPct, 2, '.', ''), '0'), '.')) ?>%，双人每人 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateDuoPct, 2, '.', ''), '0'), '.')) ?>%</p>
-                </div>
-
-                <div class="form-group" id="coStaffGroup" style="<?= $postedCrewMode === 'duo' ? '' : 'display:none' ?>">
-                    <label>附加打手 <span class="required-mark">*</span></label>
-                    <input type="hidden" name="co_staff_id" id="coStaffId"
-                           value="<?= e((string) ($_POST['co_staff_id'] ?? '')) ?>">
-                    <div class="co-staff-picker">
-                        <div class="co-staff-search-row">
-                            <input type="text" id="coStaffSearch" class="form-control"
-                                   placeholder="输入昵称或用户名，点搜索"
-                                   value="<?= e($coStaffLabel) ?>" autocomplete="off"
-                                   enterkeyhint="search">
-                            <button type="button" class="btn btn-primary" id="coStaffSearchBtn">搜索</button>
-                        </div>
-                        <div class="co-staff-results" id="coStaffResults" hidden></div>
-                        <div class="co-staff-selected" id="coStaffSelected" <?= $coStaffLabel === '' ? 'hidden' : '' ?>>
-                            <span id="coStaffSelectedLabel"><?= e($coStaffLabel) ?></span>
-                            <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
-                        </div>
-                    </div>
-                    <p class="order-no-hint">选「双人接单」后先点搜索选中搭档，再提交。支持搜一个字。</p>
-                </div>
-                <?php else: ?>
-                <input type="hidden" name="crew_mode" value="solo">
-                <?php endif; ?>
 
                 <div class="form-group">
                     <label>微信订单编号 <span class="required-mark">*</span></label>
@@ -246,14 +251,15 @@ function syncCrewModeUi() {
     const search = document.getElementById('coStaffSearch');
     const hidden = document.getElementById('coStaffId');
     if (group) {
-        group.style.display = duo ? '' : 'none';
-        group.hidden = !duo;
+        group.classList.toggle('is-open', duo);
     }
-    // 不要 disabled：部分手机选双人后 change 不触发，输入框会一直灰掉搜不了
     if (search) {
         search.disabled = false;
-        search.removeAttribute('disabled');
         search.readOnly = false;
+        search.removeAttribute('disabled');
+        search.removeAttribute('readonly');
+        search.tabIndex = 0;
+        search.style.pointerEvents = 'auto';
     }
     if (!duo && hidden) {
         hidden.value = '';
@@ -269,9 +275,6 @@ function syncCrewModeUi() {
         }
     }
     updateAmount();
-    if (duo && search) {
-        setTimeout(function () { try { search.focus(); } catch (e) {} }, 30);
-    }
 }
 
 function updateAmount() {
@@ -378,7 +381,8 @@ document.getElementById('screenshots')?.addEventListener('change', function(e) {
         hidden.value = id ? String(id) : '';
         if (selectedLabel) selectedLabel.textContent = label || '';
         if (selectedWrap) selectedWrap.hidden = !id;
-        search.value = id ? (label || '') : search.value;
+        // 选中后清空搜索框，方便继续改；已选人显示在下方标签
+        search.value = '';
         results.hidden = true;
         results.innerHTML = '';
         updateAmount();

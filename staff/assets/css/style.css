@@ -436,26 +436,52 @@ a { color: var(--primary-light); text-decoration: none; }
     font-size: 14px !important;
 }
 
+.co-staff-group {
+    display: none !important;
+    position: relative;
+    z-index: 30;
+    background: var(--card);
+}
+
+.co-staff-group.is-open {
+    display: block !important;
+}
+
 .co-staff-picker {
     position: relative;
+    z-index: 31;
+    pointer-events: auto;
 }
 
 .co-staff-search-row {
     display: flex;
     gap: 8px;
     align-items: stretch;
+    position: relative;
+    z-index: 32;
+    pointer-events: auto;
 }
 
-.co-staff-search-row .form-control {
+.co-staff-search-row .form-control,
+.co-staff-search-input {
     flex: 1;
     min-width: 0;
+    /* iOS 小于 16px 会缩放页面，后续容易点不进去 */
+    font-size: 16px !important;
+    min-height: 48px !important;
+    pointer-events: auto !important;
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: manipulation;
 }
 
 .co-staff-search-row .btn {
     flex-shrink: 0;
     white-space: nowrap;
-    min-height: 44px;
-    padding: 0 14px;
+    min-height: 48px;
+    padding: 0 16px;
+    pointer-events: auto !important;
+    touch-action: manipulation;
 }
 
 .crew-mode-toggle {
