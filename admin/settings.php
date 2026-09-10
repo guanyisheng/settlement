@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'brand_name'        => trim($_POST['brand_name'] ?? ''),
                 'brand_logo'        => trim($_POST['brand_logo'] ?? ''),
                 'brand_theme_color' => trim($_POST['brand_theme_color'] ?? '#001A72'),
-                'app_version'       => trim($_POST['app_version'] ?? '1.2.0'),
+                'app_version'       => trim($_POST['app_version'] ?? '3.0.0-beta'),
                 'storage_driver'    => trim($_POST['storage_driver'] ?? 'auto'),
                 'cos_secret_id'     => trim($_POST['cos_secret_id'] ?? ''),
                 'cos_region'        => trim($_POST['cos_region'] ?? ''),
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new InvalidArgumentException('站点名称不能为空');
             }
             if ($pairs['app_version'] === '') {
-                $pairs['app_version'] = '1.2.0';
+                $pairs['app_version'] = '3.0.0-beta';
             }
             $newSecret = trim($_POST['cos_secret_key'] ?? '');
             if ($newSecret !== '') {
@@ -92,7 +92,7 @@ require __DIR__ . '/partials/header.php';
                 </div>
                 <div class="form-group">
                     <label>系统版本号</label>
-                    <input type="text" name="app_version" class="form-control" value="<?= e($s['app_version'] ?? '1.2.0') ?>" placeholder="如 1.2.0">
+                    <input type="text" name="app_version" class="form-control" value="<?= e($s['app_version'] ?? '3.0.0-beta') ?>" placeholder="如 3.0.0-beta">
                     <p style="font-size:12px;color:var(--text-muted);margin-top:6px">显示在后台页脚，方便告知用户当前版本</p>
                 </div>
             </div>

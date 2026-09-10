@@ -5,7 +5,9 @@ require_once __DIR__ . '/../../includes/brand.php';
 require_once __DIR__ . '/../../includes/icons.php';
 $currentPage = $currentPage ?? '';
 $pageTitle = $pageTitle ?? '管理后台';
-$user = Auth::user();
+// 会话用户：勿与业务页「被编辑用户」变量同名冲突（旧代码用 $user 存详情会被这里盖掉）
+$adminSessionUser = Auth::user();
+$user = $adminSessionUser;
 $isBoss = Auth::isBoss();
 ?>
 <!DOCTYPE html>
@@ -105,7 +107,7 @@ $isBoss = Auth::isBoss();
             <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-label="打开菜单">☰</button>
             <div class="topbar-title"><?= e($pageTitle) ?></div>
             <div class="topbar-user">
-                <span><?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
+                <span>登录：<?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
                 <?php if (method_exists('Auth', 'needsPortalChoice') && Auth::needsPortalChoice()): ?>
                 <a href="/choose_portal.php" class="topbar-link"><span>切换入口</span></a>
                 <?php endif; ?>

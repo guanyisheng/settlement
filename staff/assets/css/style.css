@@ -436,8 +436,104 @@ a { color: var(--primary-light); text-decoration: none; }
     font-size: 14px !important;
 }
 
+.co-staff-group {
+    display: none !important;
+    position: relative;
+    z-index: 30;
+}
+
+.co-staff-group.is-open {
+    display: block !important;
+}
+
 .co-staff-picker {
     position: relative;
+    z-index: 31;
+}
+
+.co-staff-search-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    align-items: stretch;
+    position: relative;
+    z-index: 32;
+}
+
+/* 全局 .form-control 是透明无边框的；这里必须做成真正能看见、能点的输入框 */
+.co-staff-search-row .form-control,
+.co-staff-search-input {
+    flex: 1 1 auto;
+    width: auto !important;
+    max-width: none;
+    min-width: 0;
+    box-sizing: border-box;
+    margin: 0 !important;
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
+    padding: 12px 14px !important;
+    font-size: 16px !important;
+    min-height: 48px !important;
+    line-height: 1.3;
+    color: var(--text) !important;
+    -webkit-appearance: none;
+    appearance: none;
+    pointer-events: auto !important;
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: manipulation;
+}
+
+.co-staff-search-row .form-control:focus,
+.co-staff-search-input:focus {
+    border-color: var(--primary) !important;
+    outline: none;
+}
+
+.co-staff-search-row .btn {
+    flex: 0 0 auto;
+    width: auto !important;
+    white-space: nowrap;
+    min-height: 48px;
+    padding: 0 16px;
+    pointer-events: auto !important;
+    touch-action: manipulation;
+}
+
+.crew-mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.crew-mode-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+.crew-mode-option input {
+    accent-color: var(--primary);
+    width: 18px;
+    height: 18px;
+}
+
+.crew-mode-option:has(input:checked) {
+    border-color: var(--primary);
+    background: rgba(59, 130, 246, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.35);
 }
 
 .crew-mode-toggle {

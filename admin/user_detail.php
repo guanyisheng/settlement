@@ -29,10 +29,11 @@ if (isset(PermissionCatalog::MENU_PERMISSIONS['users'])) {
 }
 
 $pdo = Database::getConnection();
-$userId = (int) ($_GET['id'] ?? 0);
+// POST/GET 都认 id，避免表单提交丢查询串后落到错误用户
+$userId = (int) ($_POST['id'] ?? $_GET['id'] ?? 0);
 $detailUser = UserService::getById($pdo, $userId);
 
-if (!$detailUser || !empty($detailUser['deleted_at'])) {
+if ($userId <= 0 || !$detailUser || !empty($detailUser['deleted_at'])) {
     flash('error', '用户不存在');
     redirect('/admin/users.php');
 }
@@ -72,8 +73,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$rbac && isset($_POST['role'])) {
                 $payload['role'] = (string) $_POST['role'];
             }
-            if ($rbac && $canEditRoles && $assignableRoles !== []) {
-                if (empty($_POST['role_ids']) || !is_array($_POST['role_ids'])) {
+            // 仅当本次提交带了角色勾选时才改角色；避免只改昵称时因漏传 checkbox 保存失败
+            if ($rbac && $canEditRoles && isset($_POST['role_ids']) && is_array($_POST['role_ids'])) {
+                if ($_POST['role_ids'] === []) {
                     throw new InvalidArgumentException('请至少勾选一个角色');
                 }
                 $payload['role_ids'] = $_POST['role_ids'];
@@ -89,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 UserService::updateEmployee($pdo, $userId, $payload);
             }
-            flash('success', '档案已更新');
+            flash('success', '档案已更新：' . ($detailUser['nickname'] ?: $detailUser['username']) . ' (#' . $userId . ')');
         } elseif ($action === 'reset_password') {
             $password = (string) ($_POST['password'] ?? '');
             UserService::resetEmployeePassword($pdo, $userId, $password);
@@ -171,11 +173,28 @@ $roleText = $detailUserRoles !== []
 $currentPage = 'users';
 $pageTitle = '用户详情';
 require __DIR__ . '/partials/header.php';
+
+$detailAction = '/admin/user_detail.php?id=' . $userId;
+$subjectName = trim((string) ($detailUser['nickname'] ?? '')) !== ''
+    ? (string) $detailUser['nickname']
+    : (string) $detailUser['username'];
+$selfId = (int) Auth::id();
 ?>
 
 <a href="/admin/users.php" class="btn btn-sm btn-back" style="margin-bottom:16px">
-    <?= svgIcon('arrow-left', 'btn-icon') ?><span>返回列表</span>
+    <?= svgIcon('arrow-left', 'btn-icon') ?><span>返回用户列表</span>
 </a>
+
+<div class="alert" style="background:rgba(56,139,253,0.12);border:1px solid rgba(56,139,253,0.35);color:var(--text);margin-bottom:16px">
+    正在查看 / 编辑用户：
+    <strong><?= e($subjectName) ?></strong>
+    （@<?= e((string) $detailUser['username']) ?> · ID <?= (int) $userId ?>）
+    <?php if ($userId === $selfId): ?>
+        <span style="color:var(--warning,#d29922)">· 这是你自己的账号</span>
+    <?php else: ?>
+        <span style="color:var(--text-muted)">· 右上角是当前登录账号，不是本档案</span>
+    <?php endif; ?>
+</div>
 
 <?php renderAlertError($error); ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
@@ -201,16 +220,17 @@ require __DIR__ . '/partials/header.php';
 
 <div class="card">
     <div class="card-header">
-        <h2>档案信息</h2>
+        <h2>档案信息 · <?= e($subjectName) ?></h2>
         <span style="font-size:13px;color:var(--text-muted)"><?= e($roleText) ?><?= $isStaffLike ? ' · 打手向' : '' ?></span>
     </div>
     <div class="card-body">
         <?php if ($isStaffLike): ?>
-            <form method="post">
+            <form method="post" action="<?= e($detailAction) ?>">
+                <input type="hidden" name="id" value="<?= (int) $userId ?>">
                 <input type="hidden" name="action" value="update_profile">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>用户名</label>
+                        <label>用户名（登录账号，不可改）</label>
                         <input type="text" class="form-control" value="<?= e($detailUser['username']) ?>" disabled>
                     </div>
                     <div class="form-group">
@@ -257,11 +277,12 @@ require __DIR__ . '/partials/header.php';
                 <button type="submit" class="btn btn-primary">保存档案</button>
             </form>
         <?php else: ?>
-            <form method="post">
+            <form method="post" action="<?= e($detailAction) ?>">
+                <input type="hidden" name="id" value="<?= (int) $userId ?>">
                 <input type="hidden" name="action" value="update_profile">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>用户名</label>
+                        <label>用户名（登录账号，不可改）</label>
                         <input type="text" class="form-control" value="<?= e($detailUser['username']) ?>" disabled>
                     </div>
                     <div class="form-group">
@@ -308,7 +329,8 @@ require __DIR__ . '/partials/header.php';
             </form>
         <?php endif; ?>
 
-        <form method="post" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <form method="post" action="<?= e($detailAction) ?>" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+            <input type="hidden" name="id" value="<?= (int) $userId ?>">
             <input type="hidden" name="action" value="reset_password">
             <div class="form-row">
                 <div class="form-group">
@@ -327,7 +349,8 @@ require __DIR__ . '/partials/header.php';
 <div class="card">
     <div class="card-header"><h2>毛照 (<?= count($photos) ?>)</h2></div>
     <div class="card-body">
-        <form method="post" enctype="multipart/form-data" id="adminPhotoForm" style="margin-bottom:20px">
+        <form method="post" action="<?= e($detailAction) ?>" enctype="multipart/form-data" id="adminPhotoForm" style="margin-bottom:20px">
+            <input type="hidden" name="id" value="<?= (int) $userId ?>">
             <input type="hidden" name="action" value="upload_photos">
             <div class="form-group">
                 <label>多选上传毛照</label>
@@ -349,7 +372,8 @@ require __DIR__ . '/partials/header.php';
                                  style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
                         </a>
                         <p style="font-size:11px;color:var(--text-muted);margin:4px 0"><?= formatDateTimeShort($p['created_at']) ?></p>
-                        <form method="post" onsubmit="return confirm('删除这张毛照？')">
+                        <form method="post" action="<?= e($detailAction) ?>" onsubmit="return confirm('删除这张毛照？')">
+                            <input type="hidden" name="id" value="<?= (int) $userId ?>">
                             <input type="hidden" name="action" value="delete_photo">
                             <input type="hidden" name="photo_id" value="<?= (int) $p['id'] ?>">
                             <button type="submit" class="btn btn-sm btn-danger" style="width:100%">删除</button>
@@ -364,7 +388,8 @@ require __DIR__ . '/partials/header.php';
 <div class="card">
     <div class="card-header"><h2>荣誉 (<?= count($honors) ?>)</h2></div>
     <div class="card-body">
-        <form method="post" enctype="multipart/form-data" id="adminHonorForm" style="margin-bottom:20px">
+        <form method="post" action="<?= e($detailAction) ?>" enctype="multipart/form-data" id="adminHonorForm" style="margin-bottom:20px">
+            <input type="hidden" name="id" value="<?= (int) $userId ?>">
             <input type="hidden" name="action" value="add_honor">
             <div class="form-row">
                 <div class="form-group">
@@ -398,7 +423,8 @@ require __DIR__ . '/partials/header.php';
                                 <p style="font-size:13px;color:var(--text-muted);margin:6px 0 0"><?= e($h['remark']) ?></p>
                             <?php endif; ?>
                         </div>
-                        <form method="post" onsubmit="return confirm('删除这条荣誉？')">
+                        <form method="post" action="<?= e($detailAction) ?>" onsubmit="return confirm('删除这条荣誉？')">
+                            <input type="hidden" name="id" value="<?= (int) $userId ?>">
                             <input type="hidden" name="action" value="delete_honor">
                             <input type="hidden" name="honor_id" value="<?= (int) $h['id'] ?>">
                             <button type="submit" class="btn btn-sm btn-danger">删除</button>

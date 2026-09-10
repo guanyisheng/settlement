@@ -14,22 +14,48 @@ class UserService
     {
         $keyword = trim((string) $keyword);
         $params = [];
-        $where = "role = 'STAFF' AND status != " . Auth::STATUS_PENDING;
-        $order = 'ORDER BY status DESC, created_at DESC'; // 启用在前，禁用沉底
+        $searchSql = '';
+        $order = 'ORDER BY u.status DESC, u.created_at DESC';
+        $pending = Auth::STATUS_PENDING;
 
         if ($keyword !== '') {
-            $where .= ' AND (username LIKE ? OR nickname LIKE ? OR IFNULL(examiner, \'\') LIKE ? OR CAST(id AS CHAR) = ?)';
+            $searchSql = ' AND (u.username LIKE ? OR u.nickname LIKE ? OR IFNULL(u.examiner, \'\') LIKE ? OR CAST(u.id AS CHAR) = ?)';
             $like = '%' . $keyword . '%';
             $params = [$like, $like, $like, $keyword];
         }
 
+        require_once __DIR__ . '/PermissionService.php';
+        if (PermissionService::isRbacReady($pdo)) {
+            // 含「考官+打手」等：legacy role 不一定是 STAFF，但 user_roles 里有打手
+            try {
+                $sql = "SELECT DISTINCT u.*
+                        FROM users u
+                        LEFT JOIN user_roles ur ON ur.user_id = u.id
+                        LEFT JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL AND r.status = 1
+                        WHERE u.deleted_at IS NULL
+                          AND u.status != {$pending}
+                          AND (u.role = 'STAFF' OR r.code = 'STAFF')
+                          {$searchSql}
+                        {$order}";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                return $stmt->fetchAll();
+            } catch (PDOException) {
+                // fall through
+            }
+        }
+
         try {
-            $sql = "SELECT * FROM users WHERE {$where} AND deleted_at IS NULL {$order}";
+            $sql = "SELECT u.* FROM users u
+                    WHERE u.role = 'STAFF' AND u.status != {$pending} AND u.deleted_at IS NULL
+                    {$searchSql} {$order}";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             return $stmt->fetchAll();
         } catch (PDOException) {
-            $sql = "SELECT * FROM users WHERE {$where} {$order}";
+            $sql = "SELECT u.* FROM users u
+                    WHERE u.role = 'STAFF' AND u.status != {$pending}
+                    {$searchSql} {$order}";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             return $stmt->fetchAll();
@@ -162,10 +188,15 @@ class UserService
 
     public static function getStaffById(PDO $pdo, int $id): ?array
     {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'STAFF'");
-        $stmt->execute([$id]);
-        $row = $stmt->fetch();
-        return $row ?: null;
+        $user = self::getById($pdo, $id);
+        if (!$user || !empty($user['deleted_at'])) {
+            return null;
+        }
+        // 多角色：legacy 可能是考官/客服，但 RBAC 仍带打手
+        if (!self::userIsStaffLike($pdo, $user)) {
+            return null;
+        }
+        return $user;
     }
 
     public static function createStaff(PDO $pdo, array $data, ?array $photoFile = null): int
