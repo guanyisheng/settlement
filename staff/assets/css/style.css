@@ -440,6 +440,41 @@ a { color: var(--primary-light); text-decoration: none; }
     position: relative;
 }
 
+.crew-mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.crew-mode-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+.crew-mode-option input {
+    accent-color: var(--primary);
+    width: 18px;
+    height: 18px;
+}
+
+.crew-mode-option:has(input:checked) {
+    border-color: var(--primary);
+    background: rgba(59, 130, 246, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.35);
+}
+
 .co-staff-results {
     margin-top: 8px;
     border: 1px solid var(--border);
