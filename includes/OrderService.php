@@ -113,8 +113,8 @@ class OrderService
                 throw new InvalidArgumentException('附加打手不能是自己');
             }
             require_once __DIR__ . '/UserService.php';
-            $co = UserService::getStaffById($pdo, $coStaffId);
-            if (!$co || (int) ($co['status'] ?? 0) !== 1) {
+            $co = UserService::getById($pdo, $coStaffId);
+            if (!$co || !empty($co['deleted_at']) || (int) ($co['status'] ?? 0) !== 1) {
                 throw new InvalidArgumentException('附加打手不存在或未启用');
             }
         } else {

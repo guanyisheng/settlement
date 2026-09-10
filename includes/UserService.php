@@ -19,6 +19,7 @@ class UserService
         $pending = Auth::STATUS_PENDING;
 
         if ($keyword !== '') {
+            // 后台列表可搜考核官字段；报单搭档搜索用 searchCoStaffCandidates（不含 examiner，避免乱命中）
             $searchSql = ' AND (u.username LIKE ? OR u.nickname LIKE ? OR IFNULL(u.examiner, \'\') LIKE ? OR CAST(u.id AS CHAR) = ?)';
             $like = '%' . $keyword . '%';
             $params = [$like, $like, $like, $keyword];
@@ -58,6 +59,72 @@ class UserService
                     {$searchSql} {$order}";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
+            return $stmt->fetchAll();
+        }
+    }
+
+    /**
+     * 报单「附加打手」搜索：按昵称/用户名/ID 匹配已启用账号（不限 legacy 必须是 STAFF）。
+     * 不搜 examiner，避免一个字乱命中考核官字段。
+     *
+     * @return list<array<string,mixed>>
+     */
+    public static function searchCoStaffCandidates(PDO $pdo, string $keyword, int $excludeUserId = 0, int $limit = 20): array
+    {
+        $keyword = trim($keyword);
+        if ($keyword === '') {
+            return [];
+        }
+        $limit = max(1, min(50, $limit));
+        $active = Auth::STATUS_ACTIVE;
+        $like = '%' . $keyword . '%';
+        $exact = $keyword;
+        $prefix = $keyword . '%';
+        $excludeSql = $excludeUserId > 0 ? ' AND u.id != ?' : '';
+
+        // 精确昵称/用户名优先，再前缀，再模糊；legacy STAFF 排前面
+        $sql = "SELECT u.*
+                FROM users u
+                WHERE u.deleted_at IS NULL
+                  AND u.status = {$active}
+                  AND (u.username LIKE ? OR u.nickname LIKE ? OR CAST(u.id AS CHAR) = ?)
+                  {$excludeSql}
+                ORDER BY
+                  CASE
+                    WHEN u.username = ? OR u.nickname = ? THEN 0
+                    WHEN u.username LIKE ? OR u.nickname LIKE ? THEN 1
+                    ELSE 2
+                  END,
+                  CASE WHEN u.role = 'STAFF' THEN 0 ELSE 1 END,
+                  u.id DESC
+                LIMIT ?";
+
+        try {
+            $stmt = $pdo->prepare($sql);
+            $bind = [$like, $like, $keyword];
+            if ($excludeUserId > 0) {
+                $bind[] = $excludeUserId;
+            }
+            array_push($bind, $exact, $exact, $prefix, $prefix);
+            foreach ($bind as $i => $v) {
+                $stmt->bindValue($i + 1, $v);
+            }
+            $stmt->bindValue(count($bind) + 1, $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (PDOException) {
+            // 无 deleted_at 的旧库
+            $sql2 = "SELECT u.* FROM users u
+                     WHERE u.status = {$active}
+                       AND (u.username LIKE ? OR u.nickname LIKE ? OR CAST(u.id AS CHAR) = ?)
+                       " . ($excludeUserId > 0 ? ' AND u.id != ?' : '') . "
+                     ORDER BY u.id DESC LIMIT {$limit}";
+            $stmt = $pdo->prepare($sql2);
+            $p = [$like, $like, $keyword];
+            if ($excludeUserId > 0) {
+                $p[] = $excludeUserId;
+            }
+            $stmt->execute($p);
             return $stmt->fetchAll();
         }
     }

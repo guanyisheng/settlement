@@ -203,11 +203,16 @@ require __DIR__ . '/partials/header.php';
                 <dd>
                     <?php $screenshots = parseScreenshotKeys($viewOrder['screenshot_key'] ?? null); ?>
                     <?php if ($screenshots): ?>
-                        <?php foreach ($screenshots as $i => $key): ?>
-                            <a href="/admin/screenshot.php?id=<?= $viewOrder['id'] ?>&i=<?= $i ?>" target="_blank" class="btn btn-sm btn-primary" style="margin-right:6px;margin-bottom:6px">
-                                查看截图<?= count($screenshots) > 1 ? (' ' . ($i + 1)) : '' ?>
-                            </a>
-                        <?php endforeach; ?>
+                        <div class="order-screenshot-thumbs">
+                            <?php foreach ($screenshots as $i => $key): ?>
+                                <?php $shotUrl = '/admin/screenshot.php?id=' . (int) $viewOrder['id'] . '&i=' . (int) $i; ?>
+                                <button type="button" class="order-screenshot-thumb js-img-preview"
+                                        data-src="<?= e($shotUrl) ?>"
+                                        aria-label="查看截图<?= count($screenshots) > 1 ? (' ' . ($i + 1)) : '' ?>">
+                                    <img src="<?= e($shotUrl) ?>" alt="订单截图<?= count($screenshots) > 1 ? (' ' . ($i + 1)) : '' ?>" loading="lazy">
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
                     <?php else: ?>-<?php endif; ?>
                 </dd>
                 <dt>系统编号</dt><dd><?= e($viewOrder['order_no']) ?></dd>

@@ -104,9 +104,10 @@ require __DIR__ . '/partials/head.php';
                 <div class="screenshot-preview-grid" style="margin-bottom:12px">
                     <?php foreach ($photos as $p): ?>
                         <div>
-                            <a href="/staff/media.php?type=photo&id=<?= (int) $p['id'] ?>" target="_blank">
+                            <a href="/staff/media.php?type=photo&id=<?= (int) $p['id'] ?>" class="js-img-preview"
+                               data-src="/staff/media.php?type=photo&id=<?= (int) $p['id'] ?>">
                                 <img src="/staff/media.php?type=photo&id=<?= (int) $p['id'] ?>" alt="毛照"
-                                     style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid var(--border)">
+                                     style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block">
                             </a>
                             <button type="submit" form="deletePhoto<?= (int) $p['id'] ?>" class="btn btn-sm btn-danger" style="width:100%;margin-top:6px"
                                     onclick="return confirm('删除这张毛照？')">删除</button>
@@ -145,9 +146,10 @@ require __DIR__ . '/partials/head.php';
                         <?php endif; ?>
                         <div class="screenshot-preview-grid">
                             <?php foreach ($h['images'] as $img): ?>
-                                <a href="/staff/media.php?type=honor&id=<?= (int) $img['id'] ?>" target="_blank">
-                                    <img src="/staff/media.php?type=honor&id=<?= (int) $img['id'] ?>" alt=""
-                                         style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px">
+                                <a href="/staff/media.php?type=honor&id=<?= (int) $img['id'] ?>" class="js-img-preview"
+                                   data-src="/staff/media.php?type=honor&id=<?= (int) $img['id'] ?>">
+                                    <img src="/staff/media.php?type=honor&id=<?= (int) $img['id'] ?>" alt="荣誉"
+                                         style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block">
                                 </a>
                             <?php endforeach; ?>
                         </div>

@@ -15,22 +15,13 @@ $pdo = Database::getConnection();
 
 $list = [];
 if (mb_strlen($q) >= 1) {
-    foreach (UserService::getStaffList($pdo, $q) as $row) {
-        if ((int) $row['id'] === $selfId) {
-            continue;
-        }
-        if ((int) ($row['status'] ?? 0) !== Auth::STATUS_ACTIVE) {
-            continue;
-        }
+    foreach (UserService::searchCoStaffCandidates($pdo, $q, $selfId, 20) as $row) {
         $list[] = [
             'id'       => (int) $row['id'],
             'username' => (string) $row['username'],
             'nickname' => (string) $row['nickname'],
             'label'    => trim(($row['nickname'] ?: $row['username']) . ' (@' . $row['username'] . ')'),
         ];
-        if (count($list) >= 20) {
-            break;
-        }
     }
 }
 

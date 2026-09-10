@@ -31,5 +31,6 @@ require_once __DIR__ . '/../../includes/brand.php';
     });
 })();
 </script>
+<script src="/admin/assets/js/img-preview.js"></script>
 </body>
 </html>
