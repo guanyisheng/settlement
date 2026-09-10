@@ -107,7 +107,7 @@ $isBoss = Auth::isBoss();
             <button type="button" class="mobile-nav-toggle" id="mobileNavToggle" aria-label="打开菜单">☰</button>
             <div class="topbar-title"><?= e($pageTitle) ?></div>
             <div class="topbar-user">
-                <span><?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
+                <span>登录：<?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
                 <?php if (method_exists('Auth', 'needsPortalChoice') && Auth::needsPortalChoice()): ?>
                 <a href="/choose_portal.php" class="topbar-link"><span>切换入口</span></a>
                 <?php endif; ?>
