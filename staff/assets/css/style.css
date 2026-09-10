@@ -440,6 +440,24 @@ a { color: var(--primary-light); text-decoration: none; }
     position: relative;
 }
 
+.co-staff-search-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.co-staff-search-row .form-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.co-staff-search-row .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    min-height: 44px;
+    padding: 0 14px;
+}
+
 .crew-mode-toggle {
     display: grid;
     grid-template-columns: 1fr 1fr;

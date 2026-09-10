@@ -20,8 +20,8 @@ $businessTypes = BusinessTypeService::getAll($pdo, true);
 $coStaffEnabled = OrderService::hasCoStaffColumn($pdo);
 $rates = SettlementService::rates();
 $rateAPct = (float) $rates['rate_a'] * 100;
-$rateBHalfPct = (float) $rates['rate_b'] * 100;
-$rateBFullPct = min(100.0, $rateBHalfPct * 2);
+$rateDuoPct = (float) $rates['rate_b'] * 100;
+$rateSoloPct = (float) ($rates['rate_solo'] ?? min(1, $rates['rate_b'] * 2)) * 100;
 $postedCrewMode = (string) ($_POST['crew_mode'] ?? 'solo');
 if (!in_array($postedCrewMode, ['solo', 'duo'], true)) {
     $postedCrewMode = 'solo';
@@ -118,36 +118,39 @@ require __DIR__ . '/partials/head.php';
                 <div class="form-group">
                     <label>接单方式 <span class="required-mark">*</span></label>
                     <div class="crew-mode-toggle" role="radiogroup" aria-label="接单方式">
-                        <label class="crew-mode-option">
+                        <label class="crew-mode-option" for="crewModeSolo">
                             <input type="radio" name="crew_mode" value="solo" id="crewModeSolo"
                                 <?= $postedCrewMode !== 'duo' ? 'checked' : '' ?>>
                             <span>一人接单</span>
                         </label>
-                        <label class="crew-mode-option">
+                        <label class="crew-mode-option" for="crewModeDuo">
                             <input type="radio" name="crew_mode" value="duo" id="crewModeDuo"
                                 <?= $postedCrewMode === 'duo' ? 'checked' : '' ?>>
                             <span>双人接单</span>
                         </label>
                     </div>
-                    <p class="order-no-hint">默认一人；一人按 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateBFullPct, 2, '.', ''), '0'), '.')) ?>% 结算，双人每人约一半</p>
+                    <p class="order-no-hint">默认一人；一人 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateSoloPct, 2, '.', ''), '0'), '.')) ?>%，双人每人 ×<?= e((string) rtrim(rtrim(number_format($rateAPct, 2, '.', ''), '0'), '.')) ?>%×<?= e((string) rtrim(rtrim(number_format($rateDuoPct, 2, '.', ''), '0'), '.')) ?>%</p>
                 </div>
 
-                <div class="form-group" id="coStaffGroup" <?= $postedCrewMode === 'duo' ? '' : 'hidden' ?>>
+                <div class="form-group" id="coStaffGroup" style="<?= $postedCrewMode === 'duo' ? '' : 'display:none' ?>">
                     <label>附加打手 <span class="required-mark">*</span></label>
                     <input type="hidden" name="co_staff_id" id="coStaffId"
                            value="<?= e((string) ($_POST['co_staff_id'] ?? '')) ?>">
                     <div class="co-staff-picker">
-                        <input type="text" id="coStaffSearch" class="form-control"
-                               placeholder="搜索昵称 / 用户名添加搭档"
-                               value="<?= e($coStaffLabel) ?>" autocomplete="off"
-                               <?= $postedCrewMode === 'duo' ? '' : 'disabled' ?>>
+                        <div class="co-staff-search-row">
+                            <input type="text" id="coStaffSearch" class="form-control"
+                                   placeholder="输入昵称或用户名，点搜索"
+                                   value="<?= e($coStaffLabel) ?>" autocomplete="off"
+                                   enterkeyhint="search">
+                            <button type="button" class="btn btn-primary" id="coStaffSearchBtn">搜索</button>
+                        </div>
                         <div class="co-staff-results" id="coStaffResults" hidden></div>
                         <div class="co-staff-selected" id="coStaffSelected" <?= $coStaffLabel === '' ? 'hidden' : '' ?>>
                             <span id="coStaffSelectedLabel"><?= e($coStaffLabel) ?></span>
                             <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
                         </div>
                     </div>
-                    <p class="order-no-hint">双人单须指定搭档；同一微信订单号只能报一次，对方订单列表可见，到手默认平分</p>
+                    <p class="order-no-hint">选「双人接单」后先点搜索选中搭档，再提交。支持搜一个字。</p>
                 </div>
                 <?php else: ?>
                 <input type="hidden" name="crew_mode" value="solo">
@@ -220,8 +223,8 @@ require __DIR__ . '/partials/head.php';
 
 <script>
 const SETTLEMENT_RATE_A = <?= json_encode((float) $rates['rate_a']) ?>;
-const SETTLEMENT_RATE_B_HALF = <?= json_encode((float) $rates['rate_b']) ?>;
-const SETTLEMENT_RATE_B_FULL = Math.min(1, SETTLEMENT_RATE_B_HALF * 2);
+const SETTLEMENT_RATE_SOLO = <?= json_encode((float) ($rates['rate_solo'] ?? min(1, $rates['rate_b'] * 2))) ?>;
+const SETTLEMENT_RATE_DUO = <?= json_encode((float) $rates['rate_b']) ?>;
 
 function formatMoneyYuan(n) {
     return '¥' + Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -242,8 +245,16 @@ function syncCrewModeUi() {
     const group = document.getElementById('coStaffGroup');
     const search = document.getElementById('coStaffSearch');
     const hidden = document.getElementById('coStaffId');
-    if (group) group.hidden = !duo;
-    if (search) search.disabled = !duo;
+    if (group) {
+        group.style.display = duo ? '' : 'none';
+        group.hidden = !duo;
+    }
+    // 不要 disabled：部分手机选双人后 change 不触发，输入框会一直灰掉搜不了
+    if (search) {
+        search.disabled = false;
+        search.removeAttribute('disabled');
+        search.readOnly = false;
+    }
     if (!duo && hidden) {
         hidden.value = '';
         const selectedWrap = document.getElementById('coStaffSelected');
@@ -258,43 +269,60 @@ function syncCrewModeUi() {
         }
     }
     updateAmount();
+    if (duo && search) {
+        setTimeout(function () { try { search.focus(); } catch (e) {} }, 30);
+    }
 }
 
 function updateAmount() {
     const select = document.getElementById('businessType');
+    if (!select) return;
     const option = select.options[select.selectedIndex];
-    const price = parseFloat(option.dataset.price || 0);
-    const qty = parseInt(document.getElementById('quantity').value || 0, 10);
+    const price = parseFloat((option && option.dataset.price) || 0);
+    const qty = parseInt((document.getElementById('quantity') || {}).value || 0, 10);
     const amount = price * (qty > 0 ? qty : 0);
-    document.getElementById('previewAmount').textContent = formatMoneyYuan(amount);
+    const previewAmount = document.getElementById('previewAmount');
+    if (previewAmount) previewAmount.textContent = formatMoneyYuan(amount);
 
     const duo = isDuoMode();
-    const pool = amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_B_FULL;
+    const pool = duo
+        ? amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_DUO * 2
+        : amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_SOLO;
     const formula = document.getElementById('previewFormula');
     if (formula) {
         formula.textContent = duo
-            ? ('双人接单 · 每人约 ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_B_HALF) + '%')
-            : ('一人接单 · ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_B_FULL) + '%（半份×2）');
+            ? ('双人接单 · 每人 ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_DUO) + '%')
+            : ('一人接单 · ×' + pctLabel(SETTLEMENT_RATE_A) + '%×' + pctLabel(SETTLEMENT_RATE_SOLO) + '%');
     }
 
     const hint = document.getElementById('previewShareHint');
+    const staffEl = document.getElementById('previewStaffAmount');
+    if (staffEl) staffEl.textContent = formatMoneyYuan(pool);
     if (duo) {
-        const mine = Math.round(pool / 2 * 100) / 100;
-        document.getElementById('previewStaffAmount').textContent = formatMoneyYuan(pool);
+        const mine = Math.round(amount * SETTLEMENT_RATE_A * SETTLEMENT_RATE_DUO * 100) / 100;
         if (hint) {
             hint.style.display = 'block';
-            document.getElementById('previewMyShare').textContent = formatMoneyYuan(mine);
+            const share = document.getElementById('previewMyShare');
+            if (share) share.textContent = formatMoneyYuan(mine);
         }
-    } else {
-        document.getElementById('previewStaffAmount').textContent = formatMoneyYuan(pool);
-        if (hint) hint.style.display = 'none';
+    } else if (hint) {
+        hint.style.display = 'none';
     }
 }
-document.getElementById('businessType').addEventListener('change', updateAmount);
-document.getElementById('businessType').addEventListener('searchselect:change', updateAmount);
-document.getElementById('quantity').addEventListener('input', updateAmount);
-document.getElementById('crewModeSolo')?.addEventListener('change', syncCrewModeUi);
-document.getElementById('crewModeDuo')?.addEventListener('change', syncCrewModeUi);
+
+document.getElementById('businessType')?.addEventListener('change', updateAmount);
+document.getElementById('businessType')?.addEventListener('searchselect:change', updateAmount);
+document.getElementById('quantity')?.addEventListener('input', updateAmount);
+
+document.querySelectorAll('input[name="crew_mode"]').forEach(function (el) {
+    el.addEventListener('change', syncCrewModeUi);
+    el.addEventListener('click', syncCrewModeUi);
+});
+document.querySelectorAll('.crew-mode-option').forEach(function (el) {
+    el.addEventListener('click', function () {
+        setTimeout(syncCrewModeUi, 0);
+    });
+});
 syncCrewModeUi();
 
 document.getElementById('reportForm')?.addEventListener('submit', function (e) {
@@ -302,13 +330,19 @@ document.getElementById('reportForm')?.addEventListener('submit', function (e) {
     const coId = document.getElementById('coStaffId')?.value;
     if (!coId) {
         e.preventDefault();
-        alert('双人接单请先搜索并选择附加打手');
-        document.getElementById('coStaffSearch')?.focus();
+        syncCrewModeUi();
+        alert('双人接单请先搜索并点选附加打手');
+        const search = document.getElementById('coStaffSearch');
+        if (search) {
+            search.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            search.focus();
+        }
     }
 });
 
 document.getElementById('screenshots')?.addEventListener('change', function(e) {
     const preview = document.getElementById('screenshotPreview');
+    if (!preview) return;
     preview.innerHTML = '';
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -329,6 +363,7 @@ document.getElementById('screenshots')?.addEventListener('change', function(e) {
 
 (function initCoStaffPicker() {
     const search = document.getElementById('coStaffSearch');
+    const searchBtn = document.getElementById('coStaffSearchBtn');
     const hidden = document.getElementById('coStaffId');
     const results = document.getElementById('coStaffResults');
     const selectedWrap = document.getElementById('coStaffSelected');
@@ -337,15 +372,65 @@ document.getElementById('screenshots')?.addEventListener('change', function(e) {
     if (!search || !hidden || !results) return;
 
     let timer = null;
+    let composing = false;
 
     function setCoStaff(id, label) {
         hidden.value = id ? String(id) : '';
-        selectedLabel.textContent = label || '';
-        selectedWrap.hidden = !id;
-        search.value = id ? '' : search.value;
+        if (selectedLabel) selectedLabel.textContent = label || '';
+        if (selectedWrap) selectedWrap.hidden = !id;
+        search.value = id ? (label || '') : search.value;
         results.hidden = true;
         results.innerHTML = '';
         updateAmount();
+    }
+
+    async function runSearch() {
+        const q = search.value.trim();
+        results.innerHTML = '';
+        if (q.length < 1) {
+            const empty = document.createElement('div');
+            empty.className = 'co-staff-empty';
+            empty.textContent = '请输入昵称或用户名再搜索';
+            results.appendChild(empty);
+            results.hidden = false;
+            return;
+        }
+        const loading = document.createElement('div');
+        loading.className = 'co-staff-empty';
+        loading.textContent = '搜索中…';
+        results.appendChild(loading);
+        results.hidden = false;
+        try {
+            const res = await fetch('/staff/api_staff_search.php?q=' + encodeURIComponent(q));
+            const data = await res.json();
+            const items = data.items || [];
+            results.innerHTML = '';
+            if (!items.length) {
+                const empty = document.createElement('div');
+                empty.className = 'co-staff-empty';
+                empty.textContent = '未找到打手，可换一个字再试';
+                results.appendChild(empty);
+                results.hidden = false;
+                return;
+            }
+            items.forEach(item => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'co-staff-item';
+                btn.dataset.id = String(item.id);
+                btn.dataset.label = item.label;
+                btn.textContent = item.label;
+                results.appendChild(btn);
+            });
+            results.hidden = false;
+        } catch (err) {
+            results.innerHTML = '';
+            const empty = document.createElement('div');
+            empty.className = 'co-staff-empty';
+            empty.textContent = '搜索失败，请重试';
+            results.appendChild(empty);
+            results.hidden = false;
+        }
     }
 
     clearBtn?.addEventListener('click', () => {
@@ -354,47 +439,37 @@ document.getElementById('screenshots')?.addEventListener('change', function(e) {
         search.focus();
     });
 
-    search.addEventListener('input', () => {
-        const q = search.value.trim();
+    searchBtn?.addEventListener('click', function (e) {
+        e.preventDefault();
         clearTimeout(timer);
+        runSearch();
+    });
+
+    search.addEventListener('compositionstart', function () { composing = true; });
+    search.addEventListener('compositionend', function () {
+        composing = false;
+        clearTimeout(timer);
+        timer = setTimeout(runSearch, 120);
+    });
+
+    search.addEventListener('input', () => {
+        if (composing) return;
+        clearTimeout(timer);
+        const q = search.value.trim();
         if (q.length < 1) {
             results.hidden = true;
             results.innerHTML = '';
             return;
         }
-        timer = setTimeout(async () => {
-            try {
-                const res = await fetch('/staff/api_staff_search.php?q=' + encodeURIComponent(q));
-                const data = await res.json();
-                const items = data.items || [];
-                results.innerHTML = '';
-                if (!items.length) {
-                    const empty = document.createElement('div');
-                    empty.className = 'co-staff-empty';
-                    empty.textContent = '未找到打手';
-                    results.appendChild(empty);
-                    results.hidden = false;
-                    return;
-                }
-                items.forEach(item => {
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'co-staff-item';
-                    btn.dataset.id = String(item.id);
-                    btn.dataset.label = item.label;
-                    btn.textContent = item.label;
-                    results.appendChild(btn);
-                });
-                results.hidden = false;
-            } catch (e) {
-                results.innerHTML = '';
-                const empty = document.createElement('div');
-                empty.className = 'co-staff-empty';
-                empty.textContent = '搜索失败，请重试';
-                results.appendChild(empty);
-                results.hidden = false;
-            }
-        }, 220);
+        timer = setTimeout(runSearch, 200);
+    });
+
+    search.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            clearTimeout(timer);
+            runSearch();
+        }
     });
 
     results.addEventListener('click', (e) => {
