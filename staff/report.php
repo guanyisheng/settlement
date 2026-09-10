@@ -107,8 +107,8 @@ require __DIR__ . '/partials/head.php';
                            value="<?= e((string) ($_POST['co_staff_id'] ?? '')) ?>">
                     <div class="co-staff-picker">
                         <div class="co-staff-search-row">
-                            <input type="search" id="coStaffSearch" class="form-control co-staff-search-input"
-                                   placeholder="输入昵称或用户名"
+                            <input type="text" id="coStaffSearch" class="form-control co-staff-search-input"
+                                   placeholder="点这里输入昵称或用户名"
                                    value=""
                                    autocomplete="off"
                                    autocorrect="off"
@@ -124,7 +124,7 @@ require __DIR__ . '/partials/head.php';
                             <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
                         </div>
                     </div>
-                    <p class="order-no-hint">选「双人接单」后会出现此处。输入后点「搜索」，再点选搭档。</p>
+                    <p class="order-no-hint">先点左边输入框打字，再点「搜索」，最后点选搭档。</p>
                 </div>
                 <?php else: ?>
                 <input type="hidden" name="crew_mode" value="solo">
@@ -392,11 +392,8 @@ document.getElementById('screenshots')?.addEventListener('change', function(e) {
         const q = search.value.trim();
         results.innerHTML = '';
         if (q.length < 1) {
-            const empty = document.createElement('div');
-            empty.className = 'co-staff-empty';
-            empty.textContent = '请输入昵称或用户名再搜索';
-            results.appendChild(empty);
-            results.hidden = false;
+            results.hidden = true;
+            search.focus();
             return;
         }
         const loading = document.createElement('div');
