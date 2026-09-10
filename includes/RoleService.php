@@ -222,14 +222,24 @@ class RoleService
             $stmt->execute([$userId, $rid]);
         }
 
-        // 双写兼容：取第一个系统角色 code 回写 users.role
+        // 双写兼容：老板优先；否则有打手则回写 STAFF（避免考官+打手 legacy 变成考官导致搜不到）
         $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
         $stmt = $pdo->prepare(
-            "SELECT code FROM roles WHERE id IN ({$placeholders}) AND code IS NOT NULL ORDER BY is_system DESC, id ASC LIMIT 1"
+            "SELECT code FROM roles
+             WHERE id IN ({$placeholders}) AND code IS NOT NULL AND code != ''
+             ORDER BY CASE
+                 WHEN code IN ('BOSS', 'ADMIN') THEN 0
+                 WHEN code = 'STAFF' THEN 1
+                 ELSE 2
+             END, is_system DESC, id ASC
+             LIMIT 1"
         );
         $stmt->execute($roleIds);
         $code = $stmt->fetchColumn();
         if ($code) {
+            if ($code === 'ADMIN') {
+                $code = 'BOSS';
+            }
             $pdo->prepare('UPDATE users SET role = ? WHERE id = ?')->execute([$code, $userId]);
         }
 

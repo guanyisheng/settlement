@@ -39,7 +39,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $keyword = trim((string) ($_GET['q'] ?? ''));
 $businessTypes = BusinessTypeService::getAll($pdo, false, $keyword);
 $rates = SettlementService::rates();
-$example = SettlementService::calcStaffAmount(100);
 
 $currentPage = 'business_types';
 $pageTitle = '业务类型管理';
@@ -53,9 +52,10 @@ require __DIR__ . '/partials/header.php';
     <div class="card-header"><h2>默认结算倍率</h2></div>
     <div class="card-body">
         <p>公式：<strong>订单金额 × 基础倍率 × 打手倍率</strong></p>
-        <p>示例：订单 ¥100 → 打手结算 <?= formatMoney($example) ?>（<?= e(SettlementService::formulaLabel()) ?>）</p>
+        <p>示例（一人接单）：订单 ¥100 → 打手结算 <?= formatMoney(SettlementService::calcByCrewMode(100, false)['staff_amount']) ?>（<?= e(SettlementService::crewModeHint(false)) ?>）</p>
+        <p>示例（双人接单）：同一单总额同上，每人约 <?= formatMoney(SettlementService::calcByCrewMode(100, true)['staff_amount'] / 2) ?>（<?= e(SettlementService::crewModeHint(true)) ?>）</p>
         <p style="color:var(--text-muted);font-size:13px;margin-top:12px">
-            报单默认按此倍率结算。特殊单请到<strong>订单管理</strong>里手动改倍率或结算金额。修改后只影响新报单，历史单不重算。
+            「打手倍率」按<strong>双人每人半份</strong>配置（默认 50%）。一人接单自动按半份×2（默认 100%）结算加钱；双人单总额与一人相同再平分。特殊单请到<strong>订单管理</strong>手动改。只影响新报单。
         </p>
         <form method="post" style="margin-top:20px;max-width:480px">
             <input type="hidden" name="action" value="save_rates">
@@ -66,7 +66,7 @@ require __DIR__ . '/partials/header.php';
                            value="<?= e((string) round($rates['rate_a'] * 100, 2)) ?>" required>
                 </div>
                 <div class="form-group">
-                    <label>打手倍率（%）</label>
+                    <label>打手倍率 / 双人半份（%）</label>
                     <input type="number" name="rate_b_pct" class="form-control" step="0.01" min="0.01" max="100"
                            value="<?= e((string) round($rates['rate_b'] * 100, 2)) ?>" required>
                 </div>
@@ -124,6 +124,9 @@ require __DIR__ . '/partials/header.php';
                     <tr><th>ID</th><th>业务名称</th><th>单价</th><th>计价单位</th><th>备注</th><th>状态</th><th>操作</th></tr>
                 </thead>
                 <tbody>
+                <?php if ($businessTypes === []): ?>
+                    <tr><td colspan="7" style="text-align:center;color:var(--text-muted)"><?= $keyword !== '' ? '无匹配业务类型' : '暂无业务类型' ?></td></tr>
+                <?php else: ?>
                 <?php foreach ($businessTypes as $bt): ?>
                     <tr>
                         <td><?= $bt['id'] ?></td>
@@ -135,6 +138,7 @@ require __DIR__ . '/partials/header.php';
                         <td><button type="button" class="btn btn-sm" onclick="editBT(<?= htmlspecialchars(json_encode($bt), ENT_QUOTES) ?>)">编辑</button></td>
                     </tr>
                 <?php endforeach; ?>
+                <?php endif; ?>
                 </tbody>
             </table>
         </div>

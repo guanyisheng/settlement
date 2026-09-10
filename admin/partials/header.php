@@ -5,7 +5,9 @@ require_once __DIR__ . '/../../includes/brand.php';
 require_once __DIR__ . '/../../includes/icons.php';
 $currentPage = $currentPage ?? '';
 $pageTitle = $pageTitle ?? '管理后台';
-$user = Auth::user();
+// 会话用户：勿与业务页「被编辑用户」变量同名冲突（旧代码用 $user 存详情会被这里盖掉）
+$adminSessionUser = Auth::user();
+$user = $adminSessionUser;
 $isBoss = Auth::isBoss();
 ?>
 <!DOCTYPE html>
