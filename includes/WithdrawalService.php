@@ -77,9 +77,10 @@ class WithdrawalService
             $staffId = (int) $withdrawal['staff_id'];
             $amount = (float) $withdrawal['amount'];
 
-            // 再次锁定并验证余额
+            // 可提现余额已扣减本单 PENDING 占用；放款校验须加回本单金额，否则会误报「余额不足」
             $available = BalanceService::getAvailableBalanceForUpdate($pdo, $staffId);
-            if ($amount > $available) {
+            $payable = round($available + $amount, 2);
+            if ($amount > $payable + 0.001) {
                 throw new RuntimeException('打手可提现余额不足，无法放款');
             }
 
