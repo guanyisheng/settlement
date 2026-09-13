@@ -328,7 +328,7 @@ BEGIN
     ) THEN
         -- 空字符串先改成 NULL，避免唯一冲突
         UPDATE orders SET wechat_order_no = NULL WHERE wechat_order_no = '';
-        SET @sql = 'ALTER TABLE orders ADD UNIQUE INDEX idx_wechat_order_no (wechat_order_no)';
+        SET @sql = 'ALTER TABLE orders ADD INDEX idx_wechat_order_no (wechat_order_no)';
         PREPARE stmt FROM @sql;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;

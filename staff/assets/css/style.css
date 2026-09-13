@@ -383,7 +383,15 @@ a { color: var(--primary-light); text-decoration: none; }
 
 .file-input {
     padding: 8px 0 !important;
-    font-size: 14px !important;
+    font-size: 16px !important; /* iOS 避免缩放导致点不准 */
+    min-height: 44px !important;
+    width: 100% !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+    color: var(--text) !important;
 }
 
 .screenshot-preview-grid {

@@ -169,14 +169,15 @@ require __DIR__ . '/partials/head.php';
                            required maxlength="64" inputmode="text"
                            placeholder="请填写微信支付订单编号"
                            value="<?= e($_POST['wechat_order_no'] ?? '') ?>">
-                    <p class="order-no-hint">从微信账单或收款记录中复制订单编号；重复编号会提示谁已报单</p>
+                    <p class="order-no-hint">从微信账单或收款记录中复制订单编号；已拒绝的单可重新用同一编号报备</p>
                 </div>
 
                 <div class="form-group">
                     <label>订单截图 <span class="required-mark">*</span></label>
                     <input type="file" name="screenshots[]" id="screenshots" class="form-control file-input"
-                           accept="image/jpeg,image/png,image/webp" capture="environment" multiple required>
-                    <p class="order-no-hint">可上传多张微信订单详情截图，支持 JPG/PNG/WEBP，每张最大 5MB，最多 9 张</p>
+                           accept="image/*,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                           multiple required>
+                    <p class="order-no-hint">可从相册选图或拍照，支持 JPG/PNG/WEBP，每张最大 5MB，最多 9 张（勿强制仅相机）</p>
                     <div class="screenshot-preview-grid" id="screenshotPreview"></div>
                 </div>
 
