@@ -51,7 +51,12 @@ class BusinessTypeService
             'INSERT INTO business_types (name, unit_price, pricing_type, remark, status) VALUES (?, ?, ?, ?, 1)'
         );
         $stmt->execute([$name, $unitPrice, $pricingType, $remark]);
-        return (int) $pdo->lastInsertId();
+        $id = (int) $pdo->lastInsertId();
+        require_once __DIR__ . '/ExtraFeeService.php';
+        if (ExtraFeeService::isReady($pdo)) {
+            ExtraFeeService::setEnabledForBusinessType($pdo, $id, (array) ($data['extra_fee_ids'] ?? []));
+        }
+        return $id;
     }
 
     public static function update(PDO $pdo, int $id, array $data): void
@@ -70,5 +75,9 @@ class BusinessTypeService
             'UPDATE business_types SET name = ?, unit_price = ?, pricing_type = ?, remark = ?, status = ? WHERE id = ?'
         );
         $stmt->execute([$name, $unitPrice, $pricingType, $remark, $status, $id]);
+        require_once __DIR__ . '/ExtraFeeService.php';
+        if (ExtraFeeService::isReady($pdo)) {
+            ExtraFeeService::setEnabledForBusinessType($pdo, $id, (array) ($data['extra_fee_ids'] ?? []));
+        }
     }
 }

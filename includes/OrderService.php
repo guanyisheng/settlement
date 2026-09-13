@@ -137,7 +137,15 @@ class OrderService
         }
 
         $unitPrice = (float) $businessType['unit_price'];
-        $amount = round($unitPrice * $quantity, 2);
+        $baseAmount = round($unitPrice * $quantity, 2);
+
+        require_once __DIR__ . '/ExtraFeeService.php';
+        $selectedFeeIds = $data['extra_fee_ids'] ?? [];
+        if (!is_array($selectedFeeIds)) {
+            $selectedFeeIds = $selectedFeeIds !== '' && $selectedFeeIds !== null ? [$selectedFeeIds] : [];
+        }
+        $extraResolved = ExtraFeeService::resolveSelected($pdo, $businessTypeId, $selectedFeeIds);
+        $amount = ExtraFeeService::applyToBaseAmount($baseAmount, $extraResolved['rate_total']);
 
         require_once __DIR__ . '/SettlementService.php';
         $rates = SettlementService::rates();
@@ -185,9 +193,32 @@ class OrderService
         $screenshotKey = encodeScreenshotKeys($screenshotKeys);
 
         $coValue = $coStaffId > 0 ? $coStaffId : null;
+        $hasExtraCols = ExtraFeeService::orderColumnsReady($pdo);
+        $extraJson = $extraResolved['json'] !== '' ? $extraResolved['json'] : null;
+        $extraRate = $extraResolved['rate_total'];
 
         try {
-            if (self::hasCoStaffColumn($pdo)) {
+            if ($hasExtraCols && self::hasCoStaffColumn($pdo)) {
+                $stmt = $pdo->prepare(
+                    'INSERT INTO orders (order_no, wechat_order_no, screenshot_key, staff_id, co_staff_id, customer_id, business_type_id, quantity, unit_price, base_amount, amount, extra_fees_json, extra_fees_rate, staff_amount, rate_a, rate_b, start_time, end_time, remark, status)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $stmt->execute([
+                    $orderNo, $wechatOrderNo, $screenshotKey, $staffId, $coValue, $customerId, $businessTypeId,
+                    $quantity, $unitPrice, $baseAmount, $amount, $extraJson, $extraRate,
+                    $staffAmount, $rateA, $rateB, $startTime, $endTime, $remark, 'PENDING',
+                ]);
+            } elseif ($hasExtraCols) {
+                $stmt = $pdo->prepare(
+                    'INSERT INTO orders (order_no, wechat_order_no, screenshot_key, staff_id, customer_id, business_type_id, quantity, unit_price, base_amount, amount, extra_fees_json, extra_fees_rate, staff_amount, rate_a, rate_b, start_time, end_time, remark, status)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $stmt->execute([
+                    $orderNo, $wechatOrderNo, $screenshotKey, $staffId, $customerId, $businessTypeId,
+                    $quantity, $unitPrice, $baseAmount, $amount, $extraJson, $extraRate,
+                    $staffAmount, $rateA, $rateB, $startTime, $endTime, $remark, 'PENDING',
+                ]);
+            } elseif (self::hasCoStaffColumn($pdo)) {
                 $stmt = $pdo->prepare(
                     'INSERT INTO orders (order_no, wechat_order_no, screenshot_key, staff_id, co_staff_id, customer_id, business_type_id, quantity, unit_price, amount, staff_amount, rate_a, rate_b, start_time, end_time, remark, status)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -242,8 +273,10 @@ class OrderService
             'order_no'        => $orderNo,
             'wechat_order_no' => $wechatOrderNo,
             'amount'          => $amount,
+            'base_amount'     => $baseAmount,
             'staff_amount'    => $staffAmount,
             'co_staff_id'     => $coStaffId ?: null,
+            'extra_fees_rate' => $extraRate,
         ];
     }
 

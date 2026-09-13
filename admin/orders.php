@@ -221,6 +221,19 @@ require __DIR__ . '/partials/header.php';
                 <dt>业务类型</dt><dd><?= e($viewOrder['business_type_name']) ?></dd>
                 <dt>数量</dt><dd><?= e((string) (int) $viewOrder['quantity']) ?></dd>
                 <dt>单价</dt><dd><?= formatMoney($viewOrder['unit_price']) ?></dd>
+                <?php
+                require_once __DIR__ . '/../includes/ExtraFeeService.php';
+                $extraLabel = ExtraFeeService::formatSnapshotLabel(
+                    $viewOrder['extra_fees_json'] ?? null,
+                    isset($viewOrder['extra_fees_rate']) ? (float) $viewOrder['extra_fees_rate'] : null
+                );
+                ?>
+                <?php if ($extraLabel !== ''): ?>
+                <dt>额外收费</dt><dd><?= e($extraLabel) ?></dd>
+                <?php if (isset($viewOrder['base_amount']) && $viewOrder['base_amount'] !== null): ?>
+                <dt>基础金额</dt><dd><?= formatMoney($viewOrder['base_amount']) ?></dd>
+                <?php endif; ?>
+                <?php endif; ?>
                 <dt>订单金额</dt><dd class="money"><?= formatMoney($viewOrder['amount']) ?></dd>
                 <dt>打手结算</dt>
                 <dd class="money">
