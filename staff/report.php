@@ -172,7 +172,7 @@ require __DIR__ . '/partials/head.php';
                 <div class="form-group" id="extraFeeGroup" hidden>
                     <label>额外收费（选填）</label>
                     <div class="extra-fee-list" id="extraFeeList"></div>
-                    <p class="order-no-hint">有就勾，没有可不选。勾选后按基础金额上调百分比，可叠加。</p>
+                    <p class="order-no-hint">有就勾，没有可不选。可叠加：百分比按基础金额上调，固定金额直接加在订单上。</p>
                 </div>
 
                 <div class="form-group">
@@ -263,12 +263,27 @@ function isDuoMode() {
     return !!(duo && duo.checked);
 }
 
-function selectedExtraRateTotal() {
-    let total = 0;
+function extraFeeChargeText(item) {
+    if ((item.fee_type || 'percent') === 'fixed') {
+        return '+' + formatMoneyYuan(parseFloat(item.fixed_amount || 0) || 0);
+    }
+    return '+' + pctLabel(parseFloat(item.rate || 0) || 0) + '%';
+}
+
+function selectedExtraTotals() {
+    let rate = 0;
+    let fixed = 0;
     document.querySelectorAll('#extraFeeList input[type="checkbox"]:checked').forEach(function (el) {
-        total += parseFloat(el.dataset.rate || '0') || 0;
+        if ((el.dataset.type || 'percent') === 'fixed') {
+            fixed += parseFloat(el.dataset.fixed || '0') || 0;
+        } else {
+            rate += parseFloat(el.dataset.rate || '0') || 0;
+        }
     });
-    return Math.round(total * 10000) / 10000;
+    return {
+        rate: Math.round(rate * 10000) / 10000,
+        fixed: Math.round(fixed * 100) / 100
+    };
 }
 
 function renderExtraFees() {
@@ -282,7 +297,6 @@ function renderExtraFees() {
     list.querySelectorAll('input[type="checkbox"]').forEach(function (el) {
         if (el.checked) prevChecked[el.value] = true;
     });
-    // 首次渲染用 POST 回填
     const preferPosted = list.childElementCount === 0 && POSTED_EXTRA_FEE_IDS.length;
     list.innerHTML = '';
     if (!items.length) {
@@ -299,14 +313,16 @@ function renderExtraFees() {
         cb.type = 'checkbox';
         cb.name = 'extra_fee_ids[]';
         cb.value = id;
-        cb.dataset.rate = String(item.rate);
+        cb.dataset.type = item.fee_type || 'percent';
+        cb.dataset.rate = String(item.rate || 0);
+        cb.dataset.fixed = String(item.fixed_amount || 0);
         const shouldCheck = preferPosted
             ? POSTED_EXTRA_FEE_IDS.indexOf(parseInt(id, 10)) !== -1
             : !!prevChecked[id];
         cb.checked = shouldCheck;
         cb.addEventListener('change', updateAmount);
         const span = document.createElement('span');
-        span.textContent = item.name + '（+' + pctLabel(item.rate) + '%）';
+        span.textContent = item.name + '（' + extraFeeChargeText(item) + '）';
         label.appendChild(cb);
         label.appendChild(span);
         list.appendChild(label);
@@ -353,15 +369,18 @@ function updateAmount() {
     const price = parseFloat((option && option.dataset.price) || 0);
     const qty = parseInt((document.getElementById('quantity') || {}).value || 0, 10);
     const base = price * (qty > 0 ? qty : 0);
-    const extraRate = selectedExtraRateTotal();
-    const amount = Math.round(base * (1 + extraRate) * 100) / 100;
+    const extra = selectedExtraTotals();
+    const amount = Math.round((base * (1 + extra.rate) + extra.fixed) * 100) / 100;
     const previewAmount = document.getElementById('previewAmount');
     if (previewAmount) previewAmount.textContent = formatMoneyYuan(amount);
     const extraHint = document.getElementById('previewExtraHint');
     if (extraHint) {
-        if (extraRate > 0 && base > 0) {
+        if ((extra.rate > 0 || extra.fixed > 0) && base > 0) {
             extraHint.style.display = 'block';
-            extraHint.textContent = '基础 ' + formatMoneyYuan(base) + ' × (1+' + pctLabel(extraRate) + '%)';
+            let text = '基础 ' + formatMoneyYuan(base);
+            if (extra.rate > 0) text += ' × (1+' + pctLabel(extra.rate) + '%)';
+            if (extra.fixed > 0) text += ' + ' + formatMoneyYuan(extra.fixed);
+            extraHint.textContent = text;
         } else {
             extraHint.style.display = 'none';
             extraHint.textContent = '';

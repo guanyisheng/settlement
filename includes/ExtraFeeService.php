@@ -6,8 +6,8 @@ require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/helpers.php';
 
 /**
- * 额外收费项目：按订单金额百分比上调（可叠加）
- * 最终订单金额 = 基础金额 × (1 + Σ勾选项目比例)
+ * 额外收费项目：加百分比 和/或 直接加固定金额（可叠加）
+ * 最终订单金额 = 基础金额 × (1 + Σ百分比) + Σ固定加价
  */
 class ExtraFeeService
 {
@@ -62,21 +62,22 @@ class ExtraFeeService
         if (!self::isReady($pdo)) {
             throw new RuntimeException('请先执行 database/migrate_extra_fee_items.sql');
         }
-        $name = trim((string) ($data['name'] ?? ''));
-        $ratePct = (float) ($data['rate_pct'] ?? 0);
-        $sort = (int) ($data['sort_order'] ?? 0);
-        $remark = trim((string) ($data['remark'] ?? ''));
-        if ($name === '') {
-            throw new InvalidArgumentException('项目名称不能为空');
+        [$name, $type, $rate, $fixed, $sort, $remark] = self::normalizeWritePayload($data);
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO extra_fee_items (name, fee_type, rate, fixed_amount, sort_order, status, remark)
+                 VALUES (?, ?, ?, ?, ?, 1, ?)'
+            );
+            $stmt->execute([$name, $type, $rate, $fixed, $sort, $remark]);
+        } catch (PDOException) {
+            if ($type === 'fixed') {
+                throw new RuntimeException('请先执行 database/migrate_extra_fee_fixed_amount.sql 后再添加「直接加钱」项目');
+            }
+            $stmt = $pdo->prepare(
+                'INSERT INTO extra_fee_items (name, rate, sort_order, status, remark) VALUES (?, ?, ?, 1, ?)'
+            );
+            $stmt->execute([$name, $rate, $sort, $remark]);
         }
-        if ($ratePct <= 0 || $ratePct > 500) {
-            throw new InvalidArgumentException('上调比例需在 0%～500% 之间');
-        }
-        $rate = round($ratePct / 100, 4);
-        $stmt = $pdo->prepare(
-            'INSERT INTO extra_fee_items (name, rate, sort_order, status, remark) VALUES (?, ?, ?, 1, ?)'
-        );
-        $stmt->execute([$name, $rate, $sort, $remark !== '' ? $remark : null]);
         return (int) $pdo->lastInsertId();
     }
 
@@ -85,25 +86,93 @@ class ExtraFeeService
         if (!self::isReady($pdo)) {
             throw new RuntimeException('请先执行 database/migrate_extra_fee_items.sql');
         }
-        $name = trim((string) ($data['name'] ?? ''));
-        $ratePct = (float) ($data['rate_pct'] ?? 0);
-        $sort = (int) ($data['sort_order'] ?? 0);
-        $status = isset($data['status']) ? (int) $data['status'] : 1;
-        $remark = trim((string) ($data['remark'] ?? ''));
         if ($id <= 0) {
             throw new InvalidArgumentException('项目无效');
         }
+        [$name, $type, $rate, $fixed, $sort, $remark] = self::normalizeWritePayload($data);
+        $status = isset($data['status']) ? ((int) $data['status'] ? 1 : 0) : 1;
+        try {
+            $stmt = $pdo->prepare(
+                'UPDATE extra_fee_items SET name = ?, fee_type = ?, rate = ?, fixed_amount = ?, sort_order = ?, status = ?, remark = ? WHERE id = ?'
+            );
+            $stmt->execute([$name, $type, $rate, $fixed, $sort, $status, $remark, $id]);
+        } catch (PDOException) {
+            if ($type === 'fixed') {
+                throw new RuntimeException('请先执行 database/migrate_extra_fee_fixed_amount.sql 后再改为「直接加钱」');
+            }
+            $stmt = $pdo->prepare(
+                'UPDATE extra_fee_items SET name = ?, rate = ?, sort_order = ?, status = ?, remark = ? WHERE id = ?'
+            );
+            $stmt->execute([$name, $rate, $sort, $status, $remark, $id]);
+        }
+    }
+
+    /** @return array{0:string,1:string,2:float,3:float,4:int,5:?string} */
+    private static function normalizeWritePayload(array $data): array
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+        $type = strtolower(trim((string) ($data['fee_type'] ?? 'percent')));
+        if ($type !== 'fixed') {
+            $type = 'percent';
+        }
+        $sort = (int) ($data['sort_order'] ?? 0);
+        $remarkRaw = trim((string) ($data['remark'] ?? ''));
+        $remark = $remarkRaw !== '' ? $remarkRaw : null;
         if ($name === '') {
             throw new InvalidArgumentException('项目名称不能为空');
         }
-        if ($ratePct <= 0 || $ratePct > 500) {
-            throw new InvalidArgumentException('上调比例需在 0%～500% 之间');
+        $rate = 0.0;
+        $fixed = 0.0;
+        if ($type === 'fixed') {
+            $fixed = round((float) ($data['fixed_amount'] ?? 0), 2);
+            if ($fixed <= 0) {
+                throw new InvalidArgumentException('加价金额必须大于 0');
+            }
+        } else {
+            $ratePct = (float) ($data['rate_pct'] ?? 0);
+            if ($ratePct <= 0 || $ratePct > 500) {
+                throw new InvalidArgumentException('上调比例需在 0%～500% 之间');
+            }
+            $rate = round($ratePct / 100, 4);
         }
-        $rate = round($ratePct / 100, 4);
-        $stmt = $pdo->prepare(
-            'UPDATE extra_fee_items SET name = ?, rate = ?, sort_order = ?, status = ?, remark = ? WHERE id = ?'
-        );
-        $stmt->execute([$name, $rate, $sort, $status ? 1 : 0, $remark !== '' ? $remark : null, $id]);
+        return [$name, $type, $rate, $fixed, $sort, $remark];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array{id:int,name:string,fee_type:string,rate:float,rate_pct:float,fixed_amount:float}
+     */
+    public static function normalizeItem(array $row): array
+    {
+        $type = strtolower(trim((string) ($row['fee_type'] ?? $row['type'] ?? 'percent')));
+        if ($type !== 'fixed') {
+            $type = 'percent';
+        }
+        $rate = (float) ($row['rate'] ?? 0);
+        $fixed = (float) ($row['fixed_amount'] ?? $row['amount'] ?? 0);
+        if ($type === 'fixed') {
+            $rate = 0.0;
+        } else {
+            $fixed = 0.0;
+        }
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'name' => (string) ($row['name'] ?? ''),
+            'fee_type' => $type,
+            'rate' => $rate,
+            'rate_pct' => round($rate * 100, 2),
+            'fixed_amount' => round($fixed, 2),
+        ];
+    }
+
+    public static function chargeLabel(array $row): string
+    {
+        $item = self::normalizeItem($row);
+        if ($item['fee_type'] === 'fixed') {
+            return '+' . formatMoney($item['fixed_amount']);
+        }
+        $pct = rtrim(rtrim(number_format($item['rate'] * 100, 2, '.', ''), '0'), '.');
+        return '+' . $pct . '%';
     }
 
     /** @return list<int> */
@@ -130,7 +199,7 @@ class ExtraFeeService
             return [];
         }
         $stmt = $pdo->prepare(
-            'SELECT e.id, e.name, e.rate
+            'SELECT e.*
              FROM business_type_extra_fees m
              JOIN extra_fee_items e ON e.id = m.extra_fee_item_id
              WHERE m.business_type_id = ? AND e.status = 1
@@ -139,13 +208,7 @@ class ExtraFeeService
         $stmt->execute([$businessTypeId]);
         $rows = [];
         foreach ($stmt->fetchAll() as $r) {
-            $rate = (float) $r['rate'];
-            $rows[] = [
-                'id' => (int) $r['id'],
-                'name' => (string) $r['name'],
-                'rate' => $rate,
-                'rate_pct' => round($rate * 100, 2),
-            ];
+            $rows[] = self::normalizeItem($r);
         }
         return $rows;
     }
@@ -182,7 +245,7 @@ class ExtraFeeService
      * 校验并解析报单勾选的额外项目
      *
      * @param list<int|string> $selectedIds
-     * @return array{items:list<array{id:int,name:string,rate:float}>,rate_total:float,json:string}
+     * @return array{items:list<array{id:int,name:string,fee_type:string,rate:float,fixed_amount:float}>,rate_total:float,fixed_total:float,json:string}
      */
     public static function resolveSelected(PDO $pdo, int $businessTypeId, array $selectedIds): array
     {
@@ -193,6 +256,7 @@ class ExtraFeeService
         }
         $picked = [];
         $rateTotal = 0.0;
+        $fixedTotal = 0.0;
         $seen = [];
         foreach ($selectedIds as $raw) {
             $id = (int) $raw;
@@ -207,27 +271,35 @@ class ExtraFeeService
             $picked[] = [
                 'id' => $item['id'],
                 'name' => $item['name'],
+                'fee_type' => $item['fee_type'],
                 'rate' => $item['rate'],
+                'fixed_amount' => $item['fixed_amount'],
             ];
             $rateTotal += $item['rate'];
+            $fixedTotal += $item['fixed_amount'];
         }
         $rateTotal = round($rateTotal, 4);
+        $fixedTotal = round($fixedTotal, 2);
         return [
             'items' => $picked,
             'rate_total' => $rateTotal,
+            'fixed_total' => $fixedTotal,
             'json' => $picked === [] ? '' : (string) json_encode($picked, JSON_UNESCAPED_UNICODE),
         ];
     }
 
-    public static function applyToBaseAmount(float $baseAmount, float $rateTotal): float
+    public static function applyToBaseAmount(float $baseAmount, float $rateTotal, float $fixedTotal = 0.0): float
     {
         if ($rateTotal < 0) {
             $rateTotal = 0;
         }
-        return round($baseAmount * (1 + $rateTotal), 2);
+        if ($fixedTotal < 0) {
+            $fixedTotal = 0;
+        }
+        return round($baseAmount * (1 + $rateTotal) + $fixedTotal, 2);
     }
 
-    /** @return list<array{id?:int,name:string,rate:float}> */
+    /** @return list<array{id?:int,name:string,fee_type:string,rate:float,fixed_amount:float}> */
     public static function parseSnapshot(?string $json): array
     {
         $json = trim((string) $json);
@@ -243,14 +315,15 @@ class ExtraFeeService
             if (!is_array($row)) {
                 continue;
             }
-            $name = trim((string) ($row['name'] ?? ''));
-            $rate = (float) ($row['rate'] ?? 0);
-            if ($name === '' || $rate <= 0) {
+            $item = self::normalizeItem($row);
+            if ($item['name'] === '') {
                 continue;
             }
-            $item = ['name' => $name, 'rate' => $rate];
-            if (isset($row['id'])) {
-                $item['id'] = (int) $row['id'];
+            if ($item['fee_type'] === 'fixed' && $item['fixed_amount'] <= 0) {
+                continue;
+            }
+            if ($item['fee_type'] === 'percent' && $item['rate'] <= 0) {
+                continue;
             }
             $out[] = $item;
         }
@@ -264,21 +337,35 @@ class ExtraFeeService
             return '';
         }
         $parts = [];
+        $fixedSum = 0.0;
+        $pctSum = 0.0;
         foreach ($items as $item) {
-            $pct = rtrim(rtrim(number_format($item['rate'] * 100, 2, '.', ''), '0'), '.');
-            $parts[] = $item['name'] . '+' . $pct . '%';
+            $parts[] = $item['name'] . self::chargeLabel($item);
+            if ($item['fee_type'] === 'fixed') {
+                $fixedSum += $item['fixed_amount'];
+            } else {
+                $pctSum += $item['rate'];
+            }
         }
         $label = implode('、', $parts);
-        if ($rateTotal !== null && $rateTotal > 0) {
-            $sum = rtrim(rtrim(number_format($rateTotal * 100, 2, '.', ''), '0'), '.');
-            $label .= '（合计+' . $sum . '%）';
+        $tails = [];
+        $pct = $rateTotal !== null && $rateTotal > 0 ? $rateTotal : $pctSum;
+        if ($pct > 0) {
+            $sum = rtrim(rtrim(number_format($pct * 100, 2, '.', ''), '0'), '.');
+            $tails[] = '百分比+' . $sum . '%';
+        }
+        if ($fixedSum > 0) {
+            $tails[] = '加价' . formatMoney($fixedSum);
+        }
+        if ($tails !== []) {
+            $label .= '（' . implode('，', $tails) . '）';
         }
         return $label;
     }
 
     /**
      * 报单页：业务类型 → 可用额外项目
-     * @return array<string, list<array{id:int,name:string,rate:float,rate_pct:float}>>
+     * @return array<string, list<array{id:int,name:string,fee_type:string,rate:float,rate_pct:float,fixed_amount:float}>>
      */
     public static function mapEnabledByBusinessType(PDO $pdo, array $businessTypes): array
     {

@@ -145,7 +145,11 @@ class OrderService
             $selectedFeeIds = $selectedFeeIds !== '' && $selectedFeeIds !== null ? [$selectedFeeIds] : [];
         }
         $extraResolved = ExtraFeeService::resolveSelected($pdo, $businessTypeId, $selectedFeeIds);
-        $amount = ExtraFeeService::applyToBaseAmount($baseAmount, $extraResolved['rate_total']);
+        $amount = ExtraFeeService::applyToBaseAmount(
+            $baseAmount,
+            $extraResolved['rate_total'],
+            $extraResolved['fixed_total']
+        );
 
         require_once __DIR__ . '/SettlementService.php';
         $rates = SettlementService::rates();

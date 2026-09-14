@@ -4,7 +4,9 @@
 CREATE TABLE IF NOT EXISTS extra_fee_items (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL COMMENT '如：包卡、选图',
+    fee_type VARCHAR(16) NOT NULL DEFAULT 'percent' COMMENT 'percent=加百分比 fixed=直接加钱',
     rate DECIMAL(8,4) NOT NULL DEFAULT 0.1000 COMMENT '上调比例，0.10=10%',
+    fixed_amount DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '直接加价金额',
     sort_order INT NOT NULL DEFAULT 0,
     status TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用 0禁用',
     remark VARCHAR(255) DEFAULT NULL,

@@ -69,7 +69,7 @@ require __DIR__ . '/partials/header.php';
     <div class="card-header"><h2>默认结算倍率</h2></div>
     <div class="card-body">
         <p>公式：<strong>订单金额 × 基础倍率 × 打手倍率</strong></p>
-        <p>订单金额 = 单价×数量，再按勾选的额外项目上调百分比（可叠加）。</p>
+        <p>订单金额 = 单价×数量，再按勾选的额外项目：百分比上调 + 固定加价（可叠加）。</p>
         <p>示例（一人接单）：订单 ¥100 → 打手结算 <?= formatMoney(SettlementService::calcByCrewMode(100, false)['staff_amount']) ?>（<?= e(SettlementService::crewModeHint(false)) ?>）</p>
         <p>示例（双人接单）：同一单总额同上，每人约 <?= formatMoney(SettlementService::calcByCrewMode(100, true)['staff_amount'] / 2) ?>（<?= e(SettlementService::crewModeHint(true)) ?>）</p>
         <p style="color:var(--text-muted);font-size:13px;margin-top:12px">
@@ -102,22 +102,36 @@ require __DIR__ . '/partials/header.php';
             <div class="alert alert-error">
                 尚未安装额外收费表。请在业务库执行
                 <code>database/migrate_extra_fee_items.sql</code>
+                ；若已装过百分比项目、要加「直接加钱」，再执行
+                <code>database/migrate_extra_fee_fixed_amount.sql</code>。
                 后刷新本页。
             </div>
         <?php else: ?>
             <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px">
-                报单勾选后：订单金额 = 基础金额 × (1 + 各项目上调比例之和)。例：¥100 勾「包卡+10%」「选图+10%」→ ¥120，再 × 结算倍率。
+                报单勾选后：订单金额 = 基础金额 × (1 + 百分比合计) + 固定加价合计。
+                例：¥100 勾「包卡+10%」和「加急+¥20」→ ¥130，再 × 结算倍率。
             </p>
-            <form method="post" style="margin-bottom:20px">
+            <form method="post" style="margin-bottom:20px" id="createExtraFeeForm">
                 <input type="hidden" name="action" value="create_extra_fee">
                 <div class="form-row">
                     <div class="form-group">
                         <label>项目名称</label>
-                        <input type="text" name="name" class="form-control" required placeholder="如：包卡">
+                        <input type="text" name="name" class="form-control" required placeholder="如：包卡 / 加急">
                     </div>
                     <div class="form-group">
+                        <label>计费方式</label>
+                        <select name="fee_type" class="form-control js-fee-type" required>
+                            <option value="percent">加百分比</option>
+                            <option value="fixed">直接加钱</option>
+                        </select>
+                    </div>
+                    <div class="form-group js-fee-percent">
                         <label>上调比例（%）</label>
-                        <input type="number" name="rate_pct" class="form-control" required min="0.01" max="500" step="0.01" value="10">
+                        <input type="number" name="rate_pct" class="form-control js-rate-pct" min="0.01" max="500" step="0.01" value="10">
+                    </div>
+                    <div class="form-group js-fee-fixed" hidden>
+                        <label>加价金额（元）</label>
+                        <input type="number" name="fixed_amount" class="form-control js-fixed-amount" min="0.01" step="0.01" placeholder="20">
                     </div>
                     <div class="form-group">
                         <label>排序</label>
@@ -135,19 +149,21 @@ require __DIR__ . '/partials/header.php';
             <div class="table-wrap">
                 <table>
                     <thead>
-                        <tr><th>ID</th><th>名称</th><th>上调</th><th>排序</th><th>状态</th><th>备注</th><th>操作</th></tr>
+                        <tr><th>ID</th><th>名称</th><th>方式</th><th>加收</th><th>排序</th><th>状态</th><th>备注</th><th>操作</th></tr>
                     </thead>
                     <tbody>
                     <?php if ($extraItems === []): ?>
-                        <tr><td colspan="7" style="text-align:center;color:var(--text-muted)">暂无项目，请先添加</td></tr>
+                        <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">暂无项目，请先添加</td></tr>
                     <?php else: ?>
                         <?php foreach ($extraItems as $fee): ?>
                             <?php
-                            $pct = round(((float) $fee['rate']) * 100, 2);
+                            $norm = ExtraFeeService::normalizeItem($fee);
                             $feeJs = [
-                                'id' => (int) $fee['id'],
-                                'name' => (string) $fee['name'],
-                                'rate_pct' => $pct,
+                                'id' => $norm['id'],
+                                'name' => $norm['name'],
+                                'fee_type' => $norm['fee_type'],
+                                'rate_pct' => $norm['rate_pct'],
+                                'fixed_amount' => $norm['fixed_amount'],
                                 'sort_order' => (int) $fee['sort_order'],
                                 'status' => (int) $fee['status'],
                                 'remark' => (string) ($fee['remark'] ?? ''),
@@ -156,7 +172,8 @@ require __DIR__ . '/partials/header.php';
                             <tr>
                                 <td><?= (int) $fee['id'] ?></td>
                                 <td><?= e($fee['name']) ?></td>
-                                <td>+<?= e((string) $pct) ?>%</td>
+                                <td><?= $norm['fee_type'] === 'fixed' ? '直接加钱' : '加百分比' ?></td>
+                                <td><?= e(ExtraFeeService::chargeLabel($fee)) ?></td>
                                 <td><?= (int) $fee['sort_order'] ?></td>
                                 <td><span class="badge badge-<?= $fee['status'] ? 'active' : 'disabled' ?>"><?= $fee['status'] ? '启用' : '禁用' ?></span></td>
                                 <td><?= e($fee['remark'] ?: '-') ?></td>
@@ -205,7 +222,7 @@ require __DIR__ . '/partials/header.php';
                         <?php if (!(int) $fee['status']) continue; ?>
                         <label style="display:flex;align-items:center;gap:6px;font-size:13px">
                             <input type="checkbox" name="extra_fee_ids[]" value="<?= (int) $fee['id'] ?>">
-                            <?= e($fee['name']) ?>（+<?= e((string) round(((float) $fee['rate']) * 100, 2)) ?>%）
+                            <?= e($fee['name']) ?>（<?= e(ExtraFeeService::chargeLabel($fee)) ?>）
                         </label>
                     <?php endforeach; ?>
                 </div>
@@ -243,7 +260,7 @@ require __DIR__ . '/partials/header.php';
                     $feeNames = [];
                     foreach ($extraItems as $fee) {
                         if (in_array((int) $fee['id'], $feeIds, true)) {
-                            $feeNames[] = $fee['name'] . '+' . round(((float) $fee['rate']) * 100, 2) . '%';
+                            $feeNames[] = $fee['name'] . ExtraFeeService::chargeLabel($fee);
                         }
                     }
                     $btPayload = $bt;
@@ -305,7 +322,7 @@ require __DIR__ . '/partials/header.php';
                             <label style="display:flex;align-items:center;gap:6px;font-size:13px<?= !(int) $fee['status'] ? ';opacity:.55' : '' ?>">
                                 <input type="checkbox" name="extra_fee_ids[]" value="<?= (int) $fee['id'] ?>" class="edit-extra-fee"
                                        data-fee-id="<?= (int) $fee['id'] ?>">
-                                <?= e($fee['name']) ?>（+<?= e((string) round(((float) $fee['rate']) * 100, 2)) ?>%）
+                                <?= e($fee['name']) ?>（<?= e(ExtraFeeService::chargeLabel($fee)) ?>）
                                 <?= !(int) $fee['status'] ? '·已禁用' : '' ?>
                             </label>
                         <?php endforeach; ?>
@@ -334,8 +351,19 @@ require __DIR__ . '/partials/header.php';
                     <input type="text" name="name" id="extraEditName" class="form-control" required>
                 </div>
                 <div class="form-group" style="margin-bottom:12px">
+                    <label>计费方式</label>
+                    <select name="fee_type" id="extraEditType" class="form-control js-fee-type">
+                        <option value="percent">加百分比</option>
+                        <option value="fixed">直接加钱</option>
+                    </select>
+                </div>
+                <div class="form-group js-fee-percent" style="margin-bottom:12px">
                     <label>上调比例（%）</label>
-                    <input type="number" name="rate_pct" id="extraEditRate" class="form-control" required min="0.01" max="500" step="0.01">
+                    <input type="number" name="rate_pct" id="extraEditRate" class="form-control js-rate-pct" min="0.01" max="500" step="0.01">
+                </div>
+                <div class="form-group js-fee-fixed" style="margin-bottom:12px" hidden>
+                    <label>加价金额（元）</label>
+                    <input type="number" name="fixed_amount" id="extraEditFixed" class="form-control js-fixed-amount" min="0.01" step="0.01">
                 </div>
                 <div class="form-group" style="margin-bottom:12px">
                     <label>排序</label>
@@ -362,6 +390,26 @@ require __DIR__ . '/partials/header.php';
 </div>
 
 <script>
+function bindFeeTypeToggle(root) {
+    if (!root) return;
+    var typeEl = root.querySelector('.js-fee-type');
+    if (!typeEl || typeEl.dataset.bound === '1') return;
+    typeEl.dataset.bound = '1';
+    function sync() {
+        var isFixed = typeEl.value === 'fixed';
+        root.querySelectorAll('.js-fee-percent').forEach(function (el) { el.hidden = isFixed; });
+        root.querySelectorAll('.js-fee-fixed').forEach(function (el) { el.hidden = !isFixed; });
+        var rate = root.querySelector('.js-rate-pct');
+        var amt = root.querySelector('.js-fixed-amount');
+        if (rate) rate.required = !isFixed;
+        if (amt) amt.required = isFixed;
+    }
+    typeEl.addEventListener('change', sync);
+    sync();
+}
+bindFeeTypeToggle(document.getElementById('createExtraFeeForm'));
+bindFeeTypeToggle(document.getElementById('editExtraModal'));
+
 function editBT(bt) {
     document.getElementById('editId').value = bt.id;
     document.getElementById('editName').value = bt.name;
@@ -378,10 +426,14 @@ function editBT(bt) {
 function editExtraFee(fee) {
     document.getElementById('extraEditId').value = fee.id;
     document.getElementById('extraEditName').value = fee.name;
-    document.getElementById('extraEditRate').value = fee.rate_pct;
+    document.getElementById('extraEditType').value = fee.fee_type === 'fixed' ? 'fixed' : 'percent';
+    document.getElementById('extraEditRate').value = fee.rate_pct || '';
+    document.getElementById('extraEditFixed').value = fee.fixed_amount || '';
     document.getElementById('extraEditSort').value = fee.sort_order;
     document.getElementById('extraEditRemark').value = fee.remark || '';
     document.getElementById('extraEditStatus').value = fee.status;
+    bindFeeTypeToggle(document.getElementById('editExtraModal'));
+    document.getElementById('extraEditType').dispatchEvent(new Event('change'));
     document.getElementById('editExtraModal').classList.add('show');
 }
 </script>
