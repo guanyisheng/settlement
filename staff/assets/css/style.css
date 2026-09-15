@@ -427,6 +427,40 @@ a { color: var(--primary-light); text-decoration: none; }
     z-index: 5;
 }
 
+.extra-fee-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.extra-fee-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
+.extra-fee-option input {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.extra-fee-option:has(input:checked) {
+    border-color: var(--primary);
+    background: var(--primary-bg);
+}
+
 .search-select-input {
     position: relative;
     z-index: 5;

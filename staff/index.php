@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/Database.php';
 require_once __DIR__ . '/../includes/BalanceService.php';
 require_once __DIR__ . '/../includes/OrderService.php';
 require_once __DIR__ . '/../includes/SettlementService.php';
+require_once __DIR__ . '/../includes/ExtraFeeService.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 Auth::requireStaff();
@@ -96,6 +97,15 @@ require __DIR__ . '/partials/head.php';
                         </div>
                     <?php endif; ?>
                     <div class="order-card-amount"><?= formatMoney($myShare) ?></div>
+                    <?php
+                    $extraLabel = ExtraFeeService::formatSnapshotLabel(
+                        $order['extra_fees_json'] ?? null,
+                        isset($order['extra_fees_rate']) ? (float) $order['extra_fees_rate'] : null
+                    );
+                    ?>
+                    <?php if ($extraLabel !== ''): ?>
+                        <div class="order-share-hint">额外：<?= e($extraLabel) ?> · 订单 <?= formatMoney($order['amount']) ?></div>
+                    <?php endif; ?>
                     <?php if ($hasCo): ?>
                         <div class="order-share-hint">本单合计 <?= formatMoney($totalPay) ?> · 两人平分后你的份额</div>
                     <?php endif; ?>
