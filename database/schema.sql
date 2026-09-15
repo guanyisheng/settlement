@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS orders (
     INDEX idx_business_type_id (business_type_id),
     INDEX idx_status (status),
     INDEX idx_created_at (created_at),
-    UNIQUE INDEX idx_wechat_order_no (wechat_order_no),
+    INDEX idx_wechat_order_no (wechat_order_no),
     FOREIGN KEY (staff_id) REFERENCES users(id),
     FOREIGN KEY (customer_id) REFERENCES customers(id),
     FOREIGN KEY (business_type_id) REFERENCES business_types(id),

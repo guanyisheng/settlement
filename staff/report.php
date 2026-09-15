@@ -29,8 +29,8 @@ if (!in_array($postedCrewMode, ['solo', 'duo'], true)) {
 $coStaffLabel = '';
 if ($coStaffEnabled && !empty($_POST['co_staff_id'])) {
     require_once __DIR__ . '/../includes/UserService.php';
-    $coRow = UserService::getStaffById($pdo, (int) $_POST['co_staff_id']);
-    if ($coRow) {
+    $coRow = UserService::getById($pdo, (int) $_POST['co_staff_id']);
+    if ($coRow && empty($coRow['deleted_at']) && (int) ($coRow['status'] ?? 0) === 1) {
         $coStaffLabel = trim(($coRow['nickname'] ?: $coRow['username']) . ' (@' . $coRow['username'] . ')');
         $postedCrewMode = 'duo';
     }
@@ -124,16 +124,17 @@ require __DIR__ . '/partials/head.php';
                             <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
                         </div>
                     </div>
-                    <p class="order-no-hint">先点左边输入框打字，再点「搜索」，最后点选搭档。</p>
+                    <p class="order-no-hint">先点左边输入框打字，再点「搜索」，最后点选搭档。可搜任意已启用账号的昵称/用户名（不限必须勾打手角色）。</p>
                 </div>
                 <?php else: ?>
                 <input type="hidden" name="crew_mode" value="solo">
                 <?php endif; ?>
 
-                <div class="form-group">
-                    <label>选择客户 <span class="required-mark">*</span></label>
+                <div class="form-group search-select-group">
+                    <label for="customerSearch">选择客户 <span class="required-mark">*</span></label>
                     <input type="text" id="customerSearch" class="form-control search-select-input"
-                           placeholder="输入关键字搜索客户" autocomplete="off">
+                           placeholder="点这里输入关键字搜客户" autocomplete="off"
+                           enterkeyhint="search" inputmode="search">
                     <input type="hidden" name="customer_id" id="customerId"
                            value="<?= e((string) ($_POST['customer_id'] ?? '')) ?>">
                     <select id="customerSelect" class="form-control search-select-native" size="6" required>
@@ -144,10 +145,11 @@ require __DIR__ . '/partials/head.php';
                     </select>
                 </div>
 
-                <div class="form-group">
-                    <label>业务类型 <span class="required-mark">*</span></label>
+                <div class="form-group search-select-group">
+                    <label for="businessTypeSearch">业务类型 <span class="required-mark">*</span></label>
                     <input type="text" id="businessTypeSearch" class="form-control search-select-input"
-                           placeholder="输入关键字搜索业务类型" autocomplete="off">
+                           placeholder="点这里输入关键字搜业务" autocomplete="off"
+                           enterkeyhint="search" inputmode="search">
                     <input type="hidden" name="business_type_id" id="businessTypeId"
                            value="<?= e((string) ($_POST['business_type_id'] ?? '')) ?>">
                     <select id="businessType" class="form-control search-select-native" size="6" required>
@@ -167,14 +169,15 @@ require __DIR__ . '/partials/head.php';
                            required maxlength="64" inputmode="text"
                            placeholder="请填写微信支付订单编号"
                            value="<?= e($_POST['wechat_order_no'] ?? '') ?>">
-                    <p class="order-no-hint">从微信账单或收款记录中复制订单编号；重复编号会提示谁已报单</p>
+                    <p class="order-no-hint">从微信账单或收款记录中复制订单编号；已拒绝的单可重新用同一编号报备</p>
                 </div>
 
                 <div class="form-group">
                     <label>订单截图 <span class="required-mark">*</span></label>
                     <input type="file" name="screenshots[]" id="screenshots" class="form-control file-input"
-                           accept="image/jpeg,image/png,image/webp" capture="environment" multiple required>
-                    <p class="order-no-hint">可上传多张微信订单详情截图，支持 JPG/PNG/WEBP，每张最大 5MB，最多 9 张</p>
+                           accept="image/*,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                           multiple required>
+                    <p class="order-no-hint">可从相册选图或拍照，支持 JPG/PNG/WEBP，每张最大 5MB，最多 9 张（勿强制仅相机）</p>
                     <div class="screenshot-preview-grid" id="screenshotPreview"></div>
                 </div>
 

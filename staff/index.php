@@ -119,11 +119,14 @@ require __DIR__ . '/partials/head.php';
                     </div>
                     <?php $screenshots = parseScreenshotKeys($order['screenshot_key'] ?? null); ?>
                     <?php if ($screenshots): ?>
-                        <div class="order-screenshot-links">
+                        <div class="order-screenshot-thumbs">
                             <?php foreach ($screenshots as $i => $key): ?>
-                                <a href="/staff/screenshot.php?id=<?= $order['id'] ?>&i=<?= $i ?>" class="order-screenshot-link" target="_blank">
-                                    查看截图<?= count($screenshots) > 1 ? (' ' . ($i + 1)) : '' ?>
-                                </a>
+                                <?php $shotUrl = '/staff/screenshot.php?id=' . (int) $order['id'] . '&i=' . (int) $i; ?>
+                                <button type="button" class="order-screenshot-thumb js-img-preview"
+                                        data-src="<?= e($shotUrl) ?>"
+                                        aria-label="查看截图<?= count($screenshots) > 1 ? (' ' . ($i + 1)) : '' ?>">
+                                    <img src="<?= e($shotUrl) ?>" alt="订单截图<?= count($screenshots) > 1 ? (' ' . ($i + 1)) : '' ?>" loading="lazy">
+                                </button>
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>

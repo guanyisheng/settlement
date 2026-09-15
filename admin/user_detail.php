@@ -367,9 +367,10 @@ $selfId = (int) Auth::id();
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px">
                 <?php foreach ($photos as $p): ?>
                     <div>
-                        <a href="/admin/staff_photo.php?photo_id=<?= (int) $p['id'] ?>" target="_blank">
+                        <a href="/admin/staff_photo.php?photo_id=<?= (int) $p['id'] ?>" class="js-img-preview"
+                           data-src="/admin/staff_photo.php?photo_id=<?= (int) $p['id'] ?>">
                             <img src="/admin/staff_photo.php?photo_id=<?= (int) $p['id'] ?>" alt="毛照"
-                                 style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+                                 style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border);display:block">
                         </a>
                         <p style="font-size:11px;color:var(--text-muted);margin:4px 0"><?= formatDateTimeShort($p['created_at']) ?></p>
                         <form method="post" action="<?= e($detailAction) ?>" onsubmit="return confirm('删除这张毛照？')">
@@ -433,9 +434,10 @@ $selfId = (int) Auth::id();
                     <?php if (!empty($h['images'])): ?>
                         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-top:10px">
                             <?php foreach ($h['images'] as $img): ?>
-                                <a href="/admin/staff_photo.php?honor_image_id=<?= (int) $img['id'] ?>" target="_blank">
-                                    <img src="/admin/staff_photo.php?honor_image_id=<?= (int) $img['id'] ?>" alt=""
-                                         style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+                                <a href="/admin/staff_photo.php?honor_image_id=<?= (int) $img['id'] ?>" class="js-img-preview"
+                                   data-src="/admin/staff_photo.php?honor_image_id=<?= (int) $img['id'] ?>">
+                                    <img src="/admin/staff_photo.php?honor_image_id=<?= (int) $img['id'] ?>" alt="荣誉"
+                                         style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block">
                                 </a>
                             <?php endforeach; ?>
                         </div>

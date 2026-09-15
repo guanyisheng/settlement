@@ -363,7 +363,7 @@ BEGIN
           AND INDEX_NAME = 'idx_wechat_order_no'
     ) THEN
         UPDATE orders SET wechat_order_no = NULL WHERE wechat_order_no = '';
-        SET @sql = 'ALTER TABLE orders ADD UNIQUE INDEX idx_wechat_order_no (wechat_order_no)';
+        SET @sql = 'ALTER TABLE orders ADD INDEX idx_wechat_order_no (wechat_order_no)';
         PREPARE stmt FROM @sql;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;

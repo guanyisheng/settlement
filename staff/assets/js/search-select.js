@@ -34,20 +34,31 @@ function initSearchSelect(inputId, selectId, hiddenId) {
             if (item.value === '') {
                 item.element.hidden = false;
                 item.element.disabled = false;
+                item.element.style.display = '';
                 return;
             }
             const match = !kw || item.text.toLowerCase().includes(kw);
             item.element.hidden = !match;
             item.element.disabled = false;
+            // 部分手机 WebView 不认 option[hidden]，用 display 双保险
+            item.element.style.display = match ? '' : 'none';
         });
         if (select.value) {
             const current = allOptions.find(o => o.value === select.value);
             if (current) {
                 current.element.hidden = false;
                 current.element.disabled = false;
+                current.element.style.display = '';
             }
         }
     }
+
+    input.disabled = false;
+    input.readOnly = false;
+    input.removeAttribute('disabled');
+    input.removeAttribute('readonly');
+    input.style.pointerEvents = 'auto';
+    input.tabIndex = 0;
 
     input.addEventListener('input', () => renderFilter(input.value));
     input.addEventListener('focus', () => {
@@ -55,6 +66,10 @@ function initSearchSelect(inputId, selectId, hiddenId) {
             input.value = '';
             renderFilter('');
         }
+    });
+    input.addEventListener('click', function (e) {
+        e.stopPropagation();
+        try { input.focus(); } catch (err) {}
     });
     input.addEventListener('blur', () => {
         setTimeout(syncInputFromSelect, 150);
@@ -67,12 +82,19 @@ function initSearchSelect(inputId, selectId, hiddenId) {
         select.dispatchEvent(new Event('searchselect:change'));
     });
 
+    // 部分浏览器 size>1 时点 option 不触发 change，补一次 click
+    select.addEventListener('click', () => {
+        syncHidden();
+        syncInputFromSelect();
+    });
+
     const form = select.closest('form');
     if (form) {
         form.addEventListener('submit', () => {
             allOptions.forEach(item => {
                 item.element.hidden = false;
                 item.element.disabled = false;
+                item.element.style.display = '';
             });
             syncHidden();
         });

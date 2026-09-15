@@ -26,7 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WithdrawalService::reject($pdo, $withdrawalId, Auth::id(), $_POST['reject_reason'] ?? '');
             flash('success', '已拒绝提现');
         }
-        redirect('/admin/withdrawals.php?' . http_build_query(array_diff_key($_GET, ['id' => ''])));
+        $redirectQuery = $_GET;
+        if ($withdrawalId > 0) {
+            $redirectQuery['id'] = $withdrawalId;
+        }
+        redirect('/admin/withdrawals.php?' . http_build_query($redirectQuery));
     } catch (Throwable $e) {
         flashError($e, 'WDR');
         redirect('/admin/withdrawals.php?' . http_build_query($_GET));
@@ -133,6 +137,9 @@ require __DIR__ . '/partials/header.php';
                 <dt>已放款提现</dt><dd><?= formatMoney($staffBalance['paid_withdrawals']) ?></dd>
                 <dt>申请时间</dt><dd><?= formatDateTime($viewWithdrawal['created_at']) ?></dd>
                 <dt>状态</dt><dd><?= withdrawalStatusLabel($viewWithdrawal['status']) ?></dd>
+                <?php if ((int) $viewWithdrawal['staff_id'] === (int) Auth::id()): ?>
+                <dt>提示</dt><dd style="color:var(--warning,#d29922)">申请人与当前登录账号相同，可放款但建议由其他客服确认</dd>
+                <?php endif; ?>
                 <dt>收款二维码</dt>
                 <dd>
                     <?php if (!empty($viewWithdrawal['staff_pay_qr_key'])): ?>

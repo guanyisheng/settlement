@@ -113,8 +113,8 @@ class OrderService
                 throw new InvalidArgumentException('附加打手不能是自己');
             }
             require_once __DIR__ . '/UserService.php';
-            $co = UserService::getStaffById($pdo, $coStaffId);
-            if (!$co || (int) ($co['status'] ?? 0) !== 1) {
+            $co = UserService::getById($pdo, $coStaffId);
+            if (!$co || !empty($co['deleted_at']) || (int) ($co['status'] ?? 0) !== 1) {
                 throw new InvalidArgumentException('附加打手不存在或未启用');
             }
         } else {
@@ -210,7 +210,9 @@ class OrderService
             // 未跑 migration 时无 rate_a/rate_b 列
             if (!str_contains($e->getMessage(), 'rate_a') && !str_contains($e->getMessage(), 'Unknown column')) {
                 if (str_contains($e->getMessage(), 'Duplicate') || str_contains($e->getMessage(), '1062')) {
-                    throw new InvalidArgumentException('该微信订单编号已报单，请勿重复提交');
+                    throw new InvalidArgumentException(
+                        '该微信订单编号仍被占用（若旧单已拒绝，请管理员执行 database/migrate_wechat_order_no_allow_rereport.sql 后重试）'
+                    );
                 }
                 throw $e;
             }
@@ -289,19 +291,41 @@ class OrderService
                     FROM orders o
                     JOIN users u ON u.id = o.staff_id
                     {$coJoin}
-                    WHERE o.wechat_order_no = ? AND o.deleted_at IS NULL
+                    WHERE o.wechat_order_no = ?
+                      AND o.status != 'REJECTED'
+                      AND o.deleted_at IS NULL
+                    ORDER BY o.id DESC
                     LIMIT 1";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$wechatOrderNo]);
         } catch (PDOException) {
-            $sql = "SELECT o.*, u.nickname AS staff_name {$coSelect}
-                    FROM orders o
-                    JOIN users u ON u.id = o.staff_id
-                    {$coJoin}
-                    WHERE o.wechat_order_no = ?
-                    LIMIT 1";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$wechatOrderNo]);
+            try {
+                $sql = "SELECT o.*, u.nickname AS staff_name {$coSelect}
+                        FROM orders o
+                        JOIN users u ON u.id = o.staff_id
+                        {$coJoin}
+                        WHERE o.wechat_order_no = ?
+                          AND o.status != 'REJECTED'
+                        ORDER BY o.id DESC
+                        LIMIT 1";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$wechatOrderNo]);
+            } catch (PDOException) {
+                $sql = "SELECT o.*, u.nickname AS staff_name {$coSelect}
+                        FROM orders o
+                        JOIN users u ON u.id = o.staff_id
+                        {$coJoin}
+                        WHERE o.wechat_order_no = ?
+                        ORDER BY o.id DESC
+                        LIMIT 1";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$wechatOrderNo]);
+                $row = $stmt->fetch();
+                if ($row && ($row['status'] ?? '') === 'REJECTED') {
+                    return null;
+                }
+                return $row ?: null;
+            }
         }
         $row = $stmt->fetch();
         return $row ?: null;
