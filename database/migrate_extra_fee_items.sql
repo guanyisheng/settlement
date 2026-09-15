@@ -47,6 +47,8 @@ DELIMITER ;
 CALL qz_add_column_if_missing('orders', 'base_amount', "DECIMAL(12,2) DEFAULT NULL COMMENT '单价×数量（未加额外项目）' AFTER unit_price");
 CALL qz_add_column_if_missing('orders', 'extra_fees_json', "TEXT DEFAULT NULL COMMENT '额外收费快照 JSON' AFTER amount");
 CALL qz_add_column_if_missing('orders', 'extra_fees_rate', "DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '额外上调比例合计' AFTER extra_fees_json");
+CALL qz_add_column_if_missing('extra_fee_items', 'fee_type', "VARCHAR(16) NOT NULL DEFAULT 'percent' COMMENT 'percent=加百分比 fixed=直接加钱' AFTER name");
+CALL qz_add_column_if_missing('extra_fee_items', 'fixed_amount', "DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '直接加价金额' AFTER rate");
 
 DROP PROCEDURE IF EXISTS qz_add_column_if_missing;
 
