@@ -266,6 +266,12 @@ class UserService
         return $user;
     }
 
+    /** 顾客端注册（立即启用，无需审核） */
+    public static function registerClient(PDO $pdo, array $data): int
+    {
+        return self::createUser($pdo, $data, 'CLIENT', Auth::STATUS_ACTIVE);
+    }
+
     public static function createStaff(PDO $pdo, array $data, ?array $photoFile = null): int
     {
         $username = trim($data['username'] ?? '');

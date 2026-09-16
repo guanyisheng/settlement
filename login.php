@@ -79,6 +79,7 @@ $bodyClass = 'login-body';
             </form>
             <div class="auth-footer">
                 还没有账号？<a href="/register.php">注册成为打手</a>
+                · <a href="/customer/register.php">顾客注册</a>
             </div>
             <p class="login-role-hint">客服、老板请使用管理员分配的账号登录</p>
         </div>

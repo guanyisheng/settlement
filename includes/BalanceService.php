@@ -55,7 +55,10 @@ class BalanceService
             );
             $stmt->execute($params);
         }
-        return (float) $stmt->fetchColumn();
+        $report = (float) $stmt->fetchColumn();
+
+        require_once __DIR__ . '/ClientOrderService.php';
+        return round($report + ClientOrderService::staffDoneIncome($pdo, $staffId), 2);
     }
 
     /**
@@ -86,15 +89,23 @@ class BalanceService
         return (float) $stmt->fetchColumn();
     }
 
+    /** 罚款累计（扣减可提现） */
+    public static function getTotalFines(PDO $pdo, int $staffId): float
+    {
+        require_once __DIR__ . '/FineService.php';
+        return FineService::totalForStaff($pdo, $staffId);
+    }
+
     /**
-     * 可提现余额 = 累计收入 - 已放款 - 待处理
+     * 可提现余额 = 累计收入 - 已放款 - 待处理 - 罚款
      */
     public static function getAvailableBalance(PDO $pdo, int $staffId): float
     {
         $income = self::getTotalIncome($pdo, $staffId);
         $paid = self::getPaidWithdrawals($pdo, $staffId);
         $pending = self::getPendingWithdrawals($pdo, $staffId);
-        return round($income - $paid - $pending, 2);
+        $fines = self::getTotalFines($pdo, $staffId);
+        return round($income - $paid - $pending - $fines, 2);
     }
 
     /**
@@ -110,12 +121,14 @@ class BalanceService
         $totalIncome = self::getTotalIncome($pdo, $staffId);
         $paidWithdrawals = self::getPaidWithdrawals($pdo, $staffId);
         $pendingWithdrawals = self::getPendingWithdrawals($pdo, $staffId);
-        $available = round($totalIncome - $paidWithdrawals - $pendingWithdrawals, 2);
+        $fines = self::getTotalFines($pdo, $staffId);
+        $available = round($totalIncome - $paidWithdrawals - $pendingWithdrawals - $fines, 2);
 
         return [
             'total_income'        => $totalIncome,
             'paid_withdrawals'    => $paidWithdrawals,
             'pending_withdrawals' => $pendingWithdrawals,
+            'fines'               => $fines,
             'available_balance'   => $available,
             'current_balance'     => $available,
         ];
@@ -140,6 +153,17 @@ class BalanceService
         $pdo->prepare(
             'SELECT id FROM withdrawals WHERE staff_id = ? FOR UPDATE'
         )->execute([$staffId]);
+
+        try {
+            $pdo->prepare('SELECT id FROM staff_fines WHERE staff_id = ? FOR UPDATE')->execute([$staffId]);
+        } catch (PDOException) {
+        }
+        try {
+            $pdo->prepare(
+                'SELECT id FROM client_orders WHERE staff_id = ? AND status = ? FOR UPDATE'
+            )->execute([$staffId, 'DONE']);
+        } catch (PDOException) {
+        }
 
         return self::getAvailableBalance($pdo, $staffId);
     }

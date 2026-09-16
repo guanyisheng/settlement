@@ -7,6 +7,10 @@ $currentPage = $currentPage ?? '';
         <?= svgIcon('orders') ?>
         <span>订单</span>
     </a>
+    <a href="/staff/client_orders.php" class="nav-link <?= $currentPage === 'client_orders' ? 'active' : '' ?>">
+        <?= svgIcon('customers') ?>
+        <span>顾客单</span>
+    </a>
     <a href="/staff/report.php" class="nav-link <?= $currentPage === 'report' ? 'active' : '' ?>">
         <?= svgIcon('report') ?>
         <span>报单</span>
