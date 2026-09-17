@@ -136,6 +136,7 @@ function roleLabel(string $role): string
 {
     return match ($role) {
         'STAFF'            => '打手',
+        'CLIENT'           => '顾客',
         'CUSTOMER_SERVICE' => '客服',
         'EXAMINER'         => '考官',
         'BOSS', 'ADMIN'    => '老板',

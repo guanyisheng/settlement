@@ -33,6 +33,9 @@ class Auth
         'rates'          => ['BOSS', 'ADMIN'],
         'report'         => ['BOSS', 'ADMIN', 'CUSTOMER_SERVICE', 'EXAMINER', 'STAFF'],
         'honors'         => ['BOSS', 'ADMIN', 'CUSTOMER_SERVICE', 'EXAMINER'],
+        'client_orders'  => ['BOSS', 'ADMIN', 'CUSTOMER_SERVICE'],
+        'fines'          => ['BOSS', 'ADMIN', 'CUSTOMER_SERVICE'],
+        'membership'     => ['BOSS', 'ADMIN'],
     ];
 
     public const LOGIN_URL = '/login.php';
@@ -294,6 +297,9 @@ class Auth
         if (!self::check()) {
             return false;
         }
+        if (self::isClient()) {
+            return false;
+        }
         // 纯打手只进手机端工作台，禁止落到 PC 管理后台
         if (self::isStaff()) {
             return false;
@@ -386,8 +392,27 @@ class Auth
         return false;
     }
 
+    public static function isClient(): bool
+    {
+        return self::check() && self::role() === 'CLIENT';
+    }
+
+    public static function requireClient(): void
+    {
+        if (!self::check()) {
+            redirect(self::LOGIN_URL);
+        }
+        if (!self::isClient()) {
+            flash('error', '请使用顾客账号登录');
+            redirect(self::homeUrl());
+        }
+    }
+
     public static function homeUrl(): string
     {
+        if (self::isClient()) {
+            return '/customer/index.php';
+        }
         if (self::canAccessAdmin()) {
             return self::adminHomeUrl();
         }
@@ -402,6 +427,7 @@ class Auth
         $candidates = [
             'dashboard'     => '/admin/index.php',
             'orders'        => '/admin/orders.php',
+            'client_orders' => '/admin/client_orders.php',
             'withdrawals'   => '/admin/withdrawals.php',
             'registrations' => '/admin/registrations.php',
             'staff'         => '/admin/users.php',
@@ -409,6 +435,8 @@ class Auth
             'customers'     => '/admin/customers.php',
             'employees'     => '/admin/users.php',
             'statistics'    => '/admin/statistics.php',
+            'fines'         => '/admin/fines.php',
+            'membership'    => '/admin/membership.php',
             'roles'         => '/admin/roles.php',
             'rates'         => '/admin/rates.php',
             'settings'      => '/admin/settings.php',
@@ -423,9 +451,12 @@ class Auth
         return '/staff/index.php';
     }
 
-    /** 登录后直接进：有后台权限 → 后台；否则打手端。双角色合集权限已在 session */
+    /** 登录后直接进：顾客→顾客端；有后台权限→后台；否则打手端 */
     public static function redirectHome(): void
     {
+        if (self::isClient()) {
+            redirect('/customer/index.php');
+        }
         if (self::canAccessAdmin()) {
             redirect(self::adminHomeUrl());
         }
@@ -439,6 +470,9 @@ class Auth
     {
         if (!self::check()) {
             redirect(self::LOGIN_URL);
+        }
+        if (self::isClient()) {
+            redirect('/customer/index.php');
         }
         // 打手端：本人订单/报单；双角色后台用户也可进打手端看自己的报单
         if (self::isStaff() || self::can('report.create') || self::can('order.view')) {

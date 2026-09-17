@@ -57,5 +57,8 @@ class PermissionCatalog
         'rates'          => ['rate.manage'],
         'settings'       => ['settings.manage'],
         'honors'         => ['honor.view', 'honor.manage'],
+        'client_orders'  => ['order.view', 'order.review', 'customer.view'],
+        'fines'          => ['staff.manage', 'user.manage'],
+        'membership'     => ['customer.manage', 'settings.manage'],
     ];
 }

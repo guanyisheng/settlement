@@ -100,6 +100,21 @@ $isBoss = Auth::isBoss();
                 <?= svgIcon('business_types') ?><span>业务类型</span>
             </a>
             <?php endif; ?>
+            <?php if (Auth::canAccessPage('client_orders')): ?>
+            <a href="/admin/client_orders.php" class="nav-item <?= $currentPage === 'client_orders' ? 'active' : '' ?>">
+                <?= svgIcon('orders') ?><span>顾客订单</span>
+            </a>
+            <?php endif; ?>
+            <?php if (Auth::canAccessPage('fines')): ?>
+            <a href="/admin/fines.php" class="nav-item <?= $currentPage === 'fines' ? 'active' : '' ?>">
+                <?= svgIcon('withdrawals') ?><span>打手罚款</span>
+            </a>
+            <?php endif; ?>
+            <?php if (Auth::canAccessPage('membership')): ?>
+            <a href="/admin/membership.php" class="nav-item <?= $currentPage === 'membership' ? 'active' : '' ?>">
+                <?= svgIcon('customers') ?><span>会员管理</span>
+            </a>
+            <?php endif; ?>
         </nav>
     </aside>
     <div class="main">
