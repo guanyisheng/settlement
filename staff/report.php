@@ -9,6 +9,7 @@ require_once __DIR__ . '/../includes/CustomerService.php';
 require_once __DIR__ . '/../includes/BusinessTypeService.php';
 require_once __DIR__ . '/../includes/OrderService.php';
 require_once __DIR__ . '/../includes/SettlementService.php';
+require_once __DIR__ . '/../includes/ExtraFeeService.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/ErrorCodes.php';
 
@@ -17,6 +18,11 @@ Auth::requireReport();
 $pdo = Database::getConnection();
 $customers = CustomerService::getAll($pdo, true);
 $businessTypes = BusinessTypeService::getAll($pdo, true);
+$extraFeeMap = ExtraFeeService::mapEnabledByBusinessType($pdo, $businessTypes);
+$postedExtraFeeIds = [];
+if (!empty($_POST['extra_fee_ids']) && is_array($_POST['extra_fee_ids'])) {
+    $postedExtraFeeIds = array_map('intval', $_POST['extra_fee_ids']);
+}
 $coStaffEnabled = OrderService::hasCoStaffColumn($pdo);
 $rates = SettlementService::rates();
 $rateAPct = (float) $rates['rate_a'] * 100;
@@ -163,6 +169,12 @@ require __DIR__ . '/partials/head.php';
                     </select>
                 </div>
 
+                <div class="form-group" id="extraFeeGroup" hidden>
+                    <label>额外收费（选填）</label>
+                    <div class="extra-fee-list" id="extraFeeList"></div>
+                    <p class="order-no-hint">有就勾，没有可不选。可叠加：百分比按基础金额上调，固定金额直接加在订单上。</p>
+                </div>
+
                 <div class="form-group">
                     <label>微信订单编号 <span class="required-mark">*</span></label>
                     <input type="text" name="wechat_order_no" class="form-control wechat-order-input"
@@ -213,6 +225,7 @@ require __DIR__ . '/partials/head.php';
             <div class="amount-preview">
                 <div class="label">预计订单金额</div>
                 <div class="amount" id="previewAmount">¥0.00</div>
+                <div class="label" id="previewExtraHint" style="margin-top:6px;font-size:12px;display:none"></div>
                 <div class="label" style="margin-top:10px;font-size:12px" id="previewFormula">
                     <?= e(SettlementService::crewModeHint($postedCrewMode === 'duo')) ?>
                 </div>
@@ -233,6 +246,8 @@ require __DIR__ . '/partials/head.php';
 const SETTLEMENT_RATE_A = <?= json_encode((float) $rates['rate_a']) ?>;
 const SETTLEMENT_RATE_SOLO = <?= json_encode((float) ($rates['rate_solo'] ?? min(1, $rates['rate_b'] * 2))) ?>;
 const SETTLEMENT_RATE_DUO = <?= json_encode((float) $rates['rate_b']) ?>;
+const EXTRA_FEE_MAP = <?= json_encode($extraFeeMap, JSON_UNESCAPED_UNICODE) ?>;
+const POSTED_EXTRA_FEE_IDS = <?= json_encode(array_values($postedExtraFeeIds)) ?>;
 
 function formatMoneyYuan(n) {
     return '¥' + Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -246,6 +261,73 @@ function pctLabel(rate) {
 function isDuoMode() {
     const duo = document.getElementById('crewModeDuo');
     return !!(duo && duo.checked);
+}
+
+function extraFeeChargeText(item) {
+    if ((item.fee_type || 'percent') === 'fixed') {
+        return '+' + formatMoneyYuan(parseFloat(item.fixed_amount || 0) || 0);
+    }
+    return '+' + pctLabel(parseFloat(item.rate || 0) || 0) + '%';
+}
+
+function selectedExtraTotals() {
+    let rate = 0;
+    let fixed = 0;
+    document.querySelectorAll('#extraFeeList input[type="checkbox"]:checked').forEach(function (el) {
+        if ((el.dataset.type || 'percent') === 'fixed') {
+            fixed += parseFloat(el.dataset.fixed || '0') || 0;
+        } else {
+            rate += parseFloat(el.dataset.rate || '0') || 0;
+        }
+    });
+    return {
+        rate: Math.round(rate * 10000) / 10000,
+        fixed: Math.round(fixed * 100) / 100
+    };
+}
+
+function renderExtraFees() {
+    const select = document.getElementById('businessType');
+    const group = document.getElementById('extraFeeGroup');
+    const list = document.getElementById('extraFeeList');
+    if (!select || !group || !list) return;
+    const btId = String(select.value || '');
+    const items = EXTRA_FEE_MAP[btId] || [];
+    const prevChecked = {};
+    list.querySelectorAll('input[type="checkbox"]').forEach(function (el) {
+        if (el.checked) prevChecked[el.value] = true;
+    });
+    const preferPosted = list.childElementCount === 0 && POSTED_EXTRA_FEE_IDS.length;
+    list.innerHTML = '';
+    if (!items.length) {
+        group.hidden = true;
+        updateAmount();
+        return;
+    }
+    group.hidden = false;
+    items.forEach(function (item) {
+        const id = String(item.id);
+        const label = document.createElement('label');
+        label.className = 'extra-fee-option';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'extra_fee_ids[]';
+        cb.value = id;
+        cb.dataset.type = item.fee_type || 'percent';
+        cb.dataset.rate = String(item.rate || 0);
+        cb.dataset.fixed = String(item.fixed_amount || 0);
+        const shouldCheck = preferPosted
+            ? POSTED_EXTRA_FEE_IDS.indexOf(parseInt(id, 10)) !== -1
+            : !!prevChecked[id];
+        cb.checked = shouldCheck;
+        cb.addEventListener('change', updateAmount);
+        const span = document.createElement('span');
+        span.textContent = item.name + '（' + extraFeeChargeText(item) + '）';
+        label.appendChild(cb);
+        label.appendChild(span);
+        list.appendChild(label);
+    });
+    updateAmount();
 }
 
 function syncCrewModeUi() {
@@ -286,9 +368,24 @@ function updateAmount() {
     const option = select.options[select.selectedIndex];
     const price = parseFloat((option && option.dataset.price) || 0);
     const qty = parseInt((document.getElementById('quantity') || {}).value || 0, 10);
-    const amount = price * (qty > 0 ? qty : 0);
+    const base = price * (qty > 0 ? qty : 0);
+    const extra = selectedExtraTotals();
+    const amount = Math.round((base * (1 + extra.rate) + extra.fixed) * 100) / 100;
     const previewAmount = document.getElementById('previewAmount');
     if (previewAmount) previewAmount.textContent = formatMoneyYuan(amount);
+    const extraHint = document.getElementById('previewExtraHint');
+    if (extraHint) {
+        if ((extra.rate > 0 || extra.fixed > 0) && base > 0) {
+            extraHint.style.display = 'block';
+            let text = '基础 ' + formatMoneyYuan(base);
+            if (extra.rate > 0) text += ' × (1+' + pctLabel(extra.rate) + '%)';
+            if (extra.fixed > 0) text += ' + ' + formatMoneyYuan(extra.fixed);
+            extraHint.textContent = text;
+        } else {
+            extraHint.style.display = 'none';
+            extraHint.textContent = '';
+        }
+    }
 
     const duo = isDuoMode();
     const pool = duo
@@ -316,8 +413,12 @@ function updateAmount() {
     }
 }
 
-document.getElementById('businessType')?.addEventListener('change', updateAmount);
-document.getElementById('businessType')?.addEventListener('searchselect:change', updateAmount);
+document.getElementById('businessType')?.addEventListener('change', function () {
+    renderExtraFees();
+});
+document.getElementById('businessType')?.addEventListener('searchselect:change', function () {
+    renderExtraFees();
+});
 document.getElementById('quantity')?.addEventListener('input', updateAmount);
 
 document.querySelectorAll('input[name="crew_mode"]').forEach(function (el) {
@@ -330,6 +431,7 @@ document.querySelectorAll('.crew-mode-option').forEach(function (el) {
     });
 });
 syncCrewModeUi();
+renderExtraFees();
 
 document.getElementById('reportForm')?.addEventListener('submit', function (e) {
     if (!isDuoMode()) return;
