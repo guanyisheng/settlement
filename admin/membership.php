@@ -34,12 +34,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/admin/membership.php');
 }
 
-$tiers = MembershipService::tiers($pdo);
-$cards = MembershipService::cards($pdo);
+$tiers = MembershipService::tiersAll($pdo);
+$cards = MembershipService::cardsAll($pdo);
+$activeCards = array_values(array_filter($cards, static fn($c) => (int) ($c['status'] ?? 0) === 1));
 $clients = [];
 try {
     $clients = $pdo->query(
-        "SELECT id, username, nickname, growth_points, membership_expire_at FROM users WHERE role = 'CLIENT' AND status = 1 ORDER BY id DESC LIMIT 200"
+        "SELECT id, username, nickname, growth_points, membership_expire_at, status
+         FROM users WHERE role = 'CLIENT' ORDER BY id DESC LIMIT 200"
     )->fetchAll();
 } catch (PDOException) {
 }
@@ -66,10 +68,27 @@ require __DIR__ . '/partials/header.php';
         </form>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>名称</th><th>最低成长值</th><th>排序</th></tr></thead>
+                <thead><tr><th>名称</th><th>最低成长值</th><th>排序</th><th>状态</th><th>保存</th></tr></thead>
                 <tbody>
                 <?php foreach ($tiers as $t): ?>
-                    <tr><td><?= e($t['name']) ?></td><td><?= (int) $t['min_points'] ?></td><td><?= (int) $t['sort_order'] ?></td></tr>
+                    <?php $fid = 'tier-form-' . (int) $t['id']; ?>
+                    <form method="post" id="<?= $fid ?>"></form>
+                    <tr>
+                        <td>
+                            <input type="hidden" form="<?= $fid ?>" name="action" value="tier">
+                            <input type="hidden" form="<?= $fid ?>" name="id" value="<?= (int) $t['id'] ?>">
+                            <input form="<?= $fid ?>" name="name" class="form-control" value="<?= e($t['name']) ?>" required>
+                        </td>
+                        <td><input form="<?= $fid ?>" type="number" name="min_points" class="form-control" value="<?= (int) $t['min_points'] ?>" min="0"></td>
+                        <td><input form="<?= $fid ?>" type="number" name="sort_order" class="form-control" value="<?= (int) $t['sort_order'] ?>"></td>
+                        <td>
+                            <select form="<?= $fid ?>" name="status" class="form-control">
+                                <option value="1" <?= (int) $t['status'] === 1 ? 'selected' : '' ?>>启用</option>
+                                <option value="0" <?= (int) $t['status'] === 0 ? 'selected' : '' ?>>停用</option>
+                            </select>
+                        </td>
+                        <td><button form="<?= $fid ?>" class="btn btn-sm btn-primary">保存</button></td>
+                    </tr>
                 <?php endforeach; ?>
                 </tbody>
             </table>
@@ -93,15 +112,33 @@ require __DIR__ . '/partials/header.php';
         </form>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>名称</th><th>类型</th><th>天数</th><th>赠点</th><th>标价</th></tr></thead>
+                <thead><tr><th>名称</th><th>类型</th><th>天数</th><th>赠点</th><th>标价</th><th>状态</th><th>保存</th></tr></thead>
                 <tbody>
                 <?php foreach ($cards as $c): ?>
+                    <?php $fid = 'card-form-' . (int) $c['id']; ?>
+                    <form method="post" id="<?= $fid ?>"></form>
                     <tr>
-                        <td><?= e($c['name']) ?></td>
-                        <td><?= $c['card_type'] === 'year' ? '年卡' : '月卡' ?></td>
-                        <td><?= (int) $c['duration_days'] ?></td>
-                        <td><?= (int) $c['bonus_points'] ?></td>
-                        <td class="money"><?= formatMoney($c['price']) ?></td>
+                        <td>
+                            <input type="hidden" form="<?= $fid ?>" name="action" value="card">
+                            <input type="hidden" form="<?= $fid ?>" name="id" value="<?= (int) $c['id'] ?>">
+                            <input form="<?= $fid ?>" name="name" class="form-control" value="<?= e($c['name']) ?>" required>
+                        </td>
+                        <td>
+                            <select form="<?= $fid ?>" name="card_type" class="form-control">
+                                <option value="month" <?= $c['card_type'] === 'month' ? 'selected' : '' ?>>月卡</option>
+                                <option value="year" <?= $c['card_type'] === 'year' ? 'selected' : '' ?>>年卡</option>
+                            </select>
+                        </td>
+                        <td><input form="<?= $fid ?>" type="number" name="duration_days" class="form-control" value="<?= (int) $c['duration_days'] ?>" min="1"></td>
+                        <td><input form="<?= $fid ?>" type="number" name="bonus_points" class="form-control" value="<?= (int) $c['bonus_points'] ?>" min="0"></td>
+                        <td><input form="<?= $fid ?>" type="number" name="price" class="form-control" value="<?= e((string) $c['price']) ?>" step="0.01"></td>
+                        <td>
+                            <select form="<?= $fid ?>" name="status" class="form-control">
+                                <option value="1" <?= (int) $c['status'] === 1 ? 'selected' : '' ?>>启用</option>
+                                <option value="0" <?= (int) $c['status'] === 0 ? 'selected' : '' ?>>停用</option>
+                            </select>
+                        </td>
+                        <td><button form="<?= $fid ?>" class="btn btn-sm btn-primary">保存</button></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -130,13 +167,39 @@ require __DIR__ . '/partials/header.php';
             <div class="form-group">
                 <label>卡种</label>
                 <select name="card_id" class="form-control" required>
-                    <?php foreach ($cards as $c): ?>
+                    <?php foreach ($activeCards as $c): ?>
                         <option value="<?= (int) $c['id'] ?>"><?= e($c['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div class="form-group" style="display:flex;align-items:flex-end"><button class="btn btn-primary">发卡</button></div>
         </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>顾客账号</h2></div>
+    <div class="card-body" style="padding:0">
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>成长值</th><th>会员到期</th><th>状态</th></tr></thead>
+                <tbody>
+                <?php foreach ($clients as $u): ?>
+                    <tr>
+                        <td><?= (int) $u['id'] ?></td>
+                        <td><?= e($u['username']) ?></td>
+                        <td><?= e($u['nickname'] ?: '-') ?></td>
+                        <td><?= (int) ($u['growth_points'] ?? 0) ?></td>
+                        <td><?= e($u['membership_expire_at'] ?: '-') ?></td>
+                        <td><?= ((int) ($u['status'] ?? 0) === 1) ? '启用' : '禁用' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if ($clients === []): ?>
+                    <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无顾客账号</td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 <?php endif; ?>

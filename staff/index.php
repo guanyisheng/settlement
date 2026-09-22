@@ -54,6 +54,12 @@ require __DIR__ . '/partials/head.php';
                 <label>已提现</label>
                 <div class="val"><?= formatMoney($balance['paid_withdrawals']) ?></div>
             </div>
+            <?php if (($balance['fines'] ?? 0) > 0): ?>
+            <div class="balance-stat">
+                <label>罚款扣减</label>
+                <div class="val" style="color:var(--danger)"><?= formatMoney($balance['fines']) ?></div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 

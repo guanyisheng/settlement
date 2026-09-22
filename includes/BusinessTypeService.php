@@ -33,12 +33,31 @@ class BusinessTypeService
         return $stmt->fetchAll();
     }
 
+    /** @return list<string> */
+    public static function boards(): array
+    {
+        return ['三角洲', '暗区', '微契约'];
+    }
+
+    public static function normalizeBoard(mixed $raw): ?string
+    {
+        $board = trim((string) ($raw ?? ''));
+        if ($board === '') {
+            return null;
+        }
+        if (!in_array($board, self::boards(), true)) {
+            throw new InvalidArgumentException('板块须为：三角洲 / 暗区 / 微契约');
+        }
+        return $board;
+    }
+
     public static function create(PDO $pdo, array $data): int
     {
         $name = trim($data['name'] ?? '');
         $unitPrice = (float) ($data['unit_price'] ?? 0);
         $pricingType = trim($data['pricing_type'] ?? 'fixed');
         $remark = trim($data['remark'] ?? '');
+        $board = self::normalizeBoard($data['board'] ?? null);
 
         if ($name === '') {
             throw new InvalidArgumentException('业务名称不能为空');
@@ -47,10 +66,20 @@ class BusinessTypeService
             throw new InvalidArgumentException('单价不能为负数');
         }
 
-        $stmt = $pdo->prepare(
-            'INSERT INTO business_types (name, unit_price, pricing_type, remark, status) VALUES (?, ?, ?, ?, 1)'
-        );
-        $stmt->execute([$name, $unitPrice, $pricingType, $remark]);
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO business_types (name, unit_price, pricing_type, remark, board, status) VALUES (?, ?, ?, ?, ?, 1)'
+            );
+            $stmt->execute([$name, $unitPrice, $pricingType, $remark, $board]);
+        } catch (PDOException $e) {
+            if (!str_contains($e->getMessage(), 'board') && !str_contains($e->getMessage(), 'Unknown column')) {
+                throw $e;
+            }
+            $stmt = $pdo->prepare(
+                'INSERT INTO business_types (name, unit_price, pricing_type, remark, status) VALUES (?, ?, ?, ?, 1)'
+            );
+            $stmt->execute([$name, $unitPrice, $pricingType, $remark]);
+        }
         $id = (int) $pdo->lastInsertId();
         require_once __DIR__ . '/ExtraFeeService.php';
         if (ExtraFeeService::isReady($pdo)) {
@@ -66,15 +95,26 @@ class BusinessTypeService
         $pricingType = trim($data['pricing_type'] ?? 'fixed');
         $remark = trim($data['remark'] ?? '');
         $status = isset($data['status']) ? (int) $data['status'] : 1;
+        $board = self::normalizeBoard($data['board'] ?? null);
 
         if ($name === '') {
             throw new InvalidArgumentException('业务名称不能为空');
         }
 
-        $stmt = $pdo->prepare(
-            'UPDATE business_types SET name = ?, unit_price = ?, pricing_type = ?, remark = ?, status = ? WHERE id = ?'
-        );
-        $stmt->execute([$name, $unitPrice, $pricingType, $remark, $status, $id]);
+        try {
+            $stmt = $pdo->prepare(
+                'UPDATE business_types SET name = ?, unit_price = ?, pricing_type = ?, remark = ?, board = ?, status = ? WHERE id = ?'
+            );
+            $stmt->execute([$name, $unitPrice, $pricingType, $remark, $board, $status, $id]);
+        } catch (PDOException $e) {
+            if (!str_contains($e->getMessage(), 'board') && !str_contains($e->getMessage(), 'Unknown column')) {
+                throw $e;
+            }
+            $stmt = $pdo->prepare(
+                'UPDATE business_types SET name = ?, unit_price = ?, pricing_type = ?, remark = ?, status = ? WHERE id = ?'
+            );
+            $stmt->execute([$name, $unitPrice, $pricingType, $remark, $status, $id]);
+        }
         require_once __DIR__ . '/ExtraFeeService.php';
         if (ExtraFeeService::isReady($pdo)) {
             ExtraFeeService::setEnabledForBusinessType($pdo, $id, (array) ($data['extra_fee_ids'] ?? []));

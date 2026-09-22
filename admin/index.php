@@ -52,6 +52,18 @@ require __DIR__ . '/partials/header.php';
         <div class="label">当前待提现金额</div>
         <div class="value danger"><?= formatMoney($stats['pending_withdraw_amount']) ?></div>
     </div>
+    <div class="stat-card">
+        <div class="label">押金总和</div>
+        <div class="value primary"><?= formatMoney($stats['deposit_total'] ?? 0) ?></div>
+    </div>
+    <div class="stat-card">
+        <div class="label">总流水（实付）</div>
+        <div class="value success"><?= formatMoney($stats['revenue_total'] ?? 0) ?></div>
+    </div>
+    <div class="stat-card">
+        <div class="label">净利润（流水−已提现）</div>
+        <div class="value warning"><?= formatMoney($stats['net_profit'] ?? 0) ?></div>
+    </div>
     <?php if (Auth::isBoss()): ?>
     <div class="stat-card">
         <div class="label">待审核注册</div>
@@ -61,6 +73,15 @@ require __DIR__ . '/partials/header.php';
         <?php endif; ?>
     </div>
     <?php endif; ?>
+</div>
+
+<div class="card" style="margin-bottom:24px">
+    <div class="card-header"><h2>板块结算工作台</h2></div>
+    <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px">
+        <?php foreach (['三角洲', '暗区', '微契约'] as $board): ?>
+            <a class="btn btn-primary" href="/admin/board_settlement.php?board=<?= rawurlencode($board) ?>"><?= e($board) ?>结算</a>
+        <?php endforeach; ?>
+    </div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">

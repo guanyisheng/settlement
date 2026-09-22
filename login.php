@@ -14,6 +14,10 @@ if (Auth::check()) {
 
 $error = '';
 $success = flash('success');
+$next = (string) ($_GET['next'] ?? $_POST['next'] ?? '');
+if ($next !== '' && (!str_starts_with($next, '/') || str_starts_with($next, '//'))) {
+    $next = '';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -23,6 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = Auth::attemptLogin($username, $password);
     if ($user['user']) {
         Auth::login($user['user'], $remember);
+        // 顾客可回前台；工作人员一律进工作台（可再切前台）
+        if (Auth::isClient() && $next !== '') {
+            redirect($next);
+        }
         Auth::redirectHome();
     }
     $error = $user['error'] ?? '用户名或密码错误';
@@ -59,6 +67,9 @@ $bodyClass = 'login-body';
                 <div class="alert alert-error"><?= e($error) ?></div>
             <?php endif; ?>
             <form method="post">
+                <?php if ($next !== ''): ?>
+                <input type="hidden" name="next" value="<?= e($next) ?>">
+                <?php endif; ?>
                 <div class="form-group">
                     <label>用户名</label>
                     <input type="text" name="username" class="form-control" required autofocus

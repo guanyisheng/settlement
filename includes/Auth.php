@@ -397,29 +397,109 @@ class Auth
         return self::check() && self::role() === 'CLIENT';
     }
 
+    /** 打手端工作台（纯打手 / 含 STAFF 角色 / 有报单权限） */
+    public static function canAccessStaffPortal(): bool
+    {
+        if (!self::check() || self::isClient()) {
+            return false;
+        }
+        if (self::isStaff() || self::role() === 'STAFF') {
+            return true;
+        }
+        foreach (self::roles() as $r) {
+            if (($r['code'] ?? '') === 'STAFF') {
+                return true;
+            }
+        }
+        return self::can('report.create');
+    }
+
+    /** 工作人员（后台或打手端） */
+    public static function isWorker(): bool
+    {
+        return self::canAccessAdmin() || self::canAccessStaffPortal();
+    }
+
+    /** 同时具备管理端与打手端时需选择；或提供前台切换入口 */
+    public static function needsPortalChoice(): bool
+    {
+        return self::isWorker();
+    }
+
+    public static function portal(): ?string
+    {
+        self::startSession();
+        $portal = $_SESSION['portal'] ?? null;
+        return in_array($portal, ['staff', 'admin', 'front'], true) ? $portal : null;
+    }
+
+    public static function setPortal(string $portal): void
+    {
+        self::startSession();
+        if (!in_array($portal, ['staff', 'admin', 'front'], true)) {
+            return;
+        }
+        $_SESSION['portal'] = $portal;
+    }
+
+    public static function clearPortal(): void
+    {
+        self::startSession();
+        unset($_SESSION['portal']);
+    }
+
     public static function requireClient(): void
     {
         if (!self::check()) {
-            redirect(self::LOGIN_URL);
+            redirect(self::LOGIN_URL . '?next=' . rawurlencode('/customer/index.php'));
         }
         if (!self::isClient()) {
-            flash('error', '请使用顾客账号登录');
-            redirect(self::homeUrl());
+            flash('error', '请使用顾客账号操作');
+            redirect('/customer/index.php');
         }
     }
 
     public static function homeUrl(): string
     {
+        if (!self::check()) {
+            return '/customer/index.php';
+        }
         if (self::isClient()) {
             return '/customer/index.php';
         }
+        $canAdmin = self::canAccessAdmin();
+        $canStaff = self::canAccessStaffPortal();
+        $portal = self::portal();
+        if ($portal === 'front') {
+            return '/customer/index.php';
+        }
+        if ($canAdmin && $canStaff) {
+            if ($portal === 'admin') {
+                return self::adminHomeUrl();
+            }
+            if ($portal === 'staff') {
+                return '/staff/index.php';
+            }
+            return '/choose_portal.php';
+        }
+        if ($canAdmin) {
+            return self::adminHomeUrl();
+        }
+        if ($canStaff) {
+            return '/staff/index.php';
+        }
+        return '/customer/index.php';
+    }
+
+    public static function workbenchUrl(): string
+    {
         if (self::canAccessAdmin()) {
             return self::adminHomeUrl();
         }
-        if (self::check()) {
+        if (self::canAccessStaffPortal()) {
             return '/staff/index.php';
         }
-        return self::LOGIN_URL;
+        return '/customer/index.php';
     }
 
     public static function adminHomeUrl(): string
@@ -451,19 +531,29 @@ class Auth
         return '/staff/index.php';
     }
 
-    /** 登录后直接进：顾客→顾客端；有后台权限→后台；否则打手端 */
+    /** 登录后：顾客→前台；工作人员→工作台（双入口则选） */
     public static function redirectHome(): void
     {
+        if (!self::check()) {
+            redirect('/customer/index.php');
+        }
         if (self::isClient()) {
             redirect('/customer/index.php');
         }
-        if (self::canAccessAdmin()) {
+        $canAdmin = self::canAccessAdmin();
+        $canStaff = self::canAccessStaffPortal();
+        if ($canAdmin && $canStaff && !self::portal()) {
+            redirect('/choose_portal.php');
+        }
+        if ($canAdmin) {
+            self::setPortal('admin');
             redirect(self::adminHomeUrl());
         }
-        if (self::check()) {
+        if ($canStaff) {
+            self::setPortal('staff');
             redirect('/staff/index.php');
         }
-        redirect(self::LOGIN_URL);
+        redirect('/customer/index.php');
     }
 
     public static function requireStaff(): void

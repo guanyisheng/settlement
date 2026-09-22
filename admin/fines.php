@@ -15,15 +15,26 @@ $error = flash('error');
 $success = flash('success');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? 'create';
     try {
-        FineService::create(
-            $pdo,
-            (int) ($_POST['staff_id'] ?? 0),
-            (float) ($_POST['amount'] ?? 0),
-            (string) ($_POST['reason'] ?? ''),
-            (int) Auth::id()
-        );
-        flash('success', '罚款已登记，将从可提现余额扣除');
+        if ($action === 'revoke') {
+            FineService::revoke(
+                $pdo,
+                (int) ($_POST['id'] ?? 0),
+                (int) Auth::id(),
+                (string) ($_POST['revoke_note'] ?? '')
+            );
+            flash('success', '罚款已撤销，余额已恢复');
+        } else {
+            FineService::create(
+                $pdo,
+                (int) ($_POST['staff_id'] ?? 0),
+                (float) ($_POST['amount'] ?? 0),
+                (string) ($_POST['reason'] ?? ''),
+                (int) Auth::id()
+            );
+            flash('success', '罚款已登记，将从可提现余额扣除');
+        }
     } catch (Throwable $e) {
         flash('error', $e->getMessage());
     }
@@ -46,6 +57,7 @@ require __DIR__ . '/partials/header.php';
             <div class="alert alert-error">请先执行 database/migrate_customer_portal.sql</div>
         <?php else: ?>
         <form method="post">
+            <input type="hidden" name="action" value="create">
             <div class="form-row">
                 <div class="form-group">
                     <label>打手</label>
@@ -78,16 +90,43 @@ require __DIR__ . '/partials/header.php';
     <div class="card-body" style="padding:0">
         <div class="table-wrap">
             <table>
-                <thead><tr><th>ID</th><th>打手</th><th>金额</th><th>原因</th><th>操作人</th><th>时间</th></tr></thead>
+                <thead>
+                <tr>
+                    <th>ID</th><th>打手</th><th>金额</th><th>原因</th><th>状态</th><th>操作人</th><th>时间</th><th>操作</th>
+                </tr>
+                </thead>
                 <tbody>
                 <?php foreach ($fines as $f): ?>
+                    <?php $st = strtoupper((string) ($f['status'] ?? 'ACTIVE')); ?>
                     <tr>
                         <td><?= (int) $f['id'] ?></td>
                         <td><?= e($f['staff_name']) ?></td>
                         <td class="money"><?= formatMoney($f['amount']) ?></td>
                         <td><?= e($f['reason']) ?></td>
+                        <td>
+                            <?php if ($st === 'REVOKED'): ?>
+                                <span class="badge badge-disabled">已撤销</span>
+                                <?php if (!empty($f['revoker_name'])): ?>
+                                    <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
+                                        <?= e($f['revoker_name']) ?> · <?= formatDateTimeShort($f['revoked_at'] ?? null) ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="badge badge-active">生效中</span>
+                            <?php endif; ?>
+                        </td>
                         <td><?= e($f['creator_name'] ?: '-') ?></td>
                         <td><?= formatDateTimeShort($f['created_at']) ?></td>
+                        <td>
+                            <?php if ($st !== 'REVOKED' && FineService::hasStatusColumn($pdo)): ?>
+                            <form method="post" style="display:inline" onsubmit="return confirm('确认撤销该罚款？余额将恢复')">
+                                <input type="hidden" name="action" value="revoke">
+                                <input type="hidden" name="id" value="<?= (int) $f['id'] ?>">
+                                <input type="hidden" name="revoke_note" value="后台撤销">
+                                <button type="submit" class="btn btn-sm">撤销</button>
+                            </form>
+                            <?php else: ?>-<?php endif; ?>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

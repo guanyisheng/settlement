@@ -116,7 +116,7 @@ require __DIR__ . '/partials/header.php';
                 <div class="form-row">
                     <div class="form-group">
                         <label>项目名称</label>
-                        <input type="text" name="name" class="form-control" required placeholder="如：包卡 / 加急">
+                        <input type="text" name="name" class="form-control" required placeholder="如：指定地图 / 包卡">
                     </div>
                     <div class="form-group">
                         <label>计费方式</label>
@@ -210,13 +210,22 @@ require __DIR__ . '/partials/header.php';
                     <input type="text" name="pricing_type" class="form-control" value="fixed" placeholder="fixed">
                 </div>
                 <div class="form-group">
+                    <label>结算板块</label>
+                    <select name="board" class="form-control">
+                        <option value="">未分配</option>
+                        <?php foreach (BusinessTypeService::boards() as $b): ?>
+                            <option value="<?= e($b) ?>"><?= e($b) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>备注</label>
                     <input type="text" name="remark" class="form-control">
                 </div>
             </div>
             <?php if ($extraReady && $extraItems !== []): ?>
             <div class="form-group" style="margin-top:12px">
-                <label>本类型启用的额外收费（打手报单可选）</label>
+                <label>本类型启用的额外收费（指定地图、包卡等）</label>
                 <div style="display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:8px">
                     <?php foreach ($extraItems as $fee): ?>
                         <?php if (!(int) $fee['status']) continue; ?>
@@ -248,11 +257,11 @@ require __DIR__ . '/partials/header.php';
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr><th>ID</th><th>业务名称</th><th>单价</th><th>额外项目</th><th>备注</th><th>状态</th><th>操作</th></tr>
+                    <tr><th>ID</th><th>业务名称</th><th>单价</th><th>板块</th><th>额外项目</th><th>备注</th><th>状态</th><th>操作</th></tr>
                 </thead>
                 <tbody>
                 <?php if ($businessTypes === []): ?>
-                    <tr><td colspan="7" style="text-align:center;color:var(--text-muted)"><?= $keyword !== '' ? '无匹配业务类型' : '暂无业务类型' ?></td></tr>
+                    <tr><td colspan="8" style="text-align:center;color:var(--text-muted)"><?= $keyword !== '' ? '无匹配业务类型' : '暂无业务类型' ?></td></tr>
                 <?php else: ?>
                 <?php foreach ($businessTypes as $bt): ?>
                     <?php
@@ -270,6 +279,7 @@ require __DIR__ . '/partials/header.php';
                         <td><?= $bt['id'] ?></td>
                         <td><?= e($bt['name']) ?></td>
                         <td class="money"><?= formatMoney($bt['unit_price']) ?></td>
+                        <td><?= e($bt['board'] ?? '') ?: '<span style="color:var(--text-muted)">未分配</span>' ?></td>
                         <td style="font-size:12px;max-width:220px"><?= $feeNames !== [] ? e(implode('、', $feeNames)) : '<span style="color:var(--text-muted)">未启用</span>' ?></td>
                         <td><?= e($bt['remark'] ?: '-') ?></td>
                         <td><span class="badge badge-<?= $bt['status'] ? 'active' : 'disabled' ?>"><?= $bt['status'] ? '启用' : '禁用' ?></span></td>
@@ -301,6 +311,15 @@ require __DIR__ . '/partials/header.php';
                 <div class="form-group" style="margin-bottom:12px">
                     <label>计价单位</label>
                     <input type="text" name="pricing_type" id="editPricingType" class="form-control">
+                </div>
+                <div class="form-group" style="margin-bottom:12px">
+                    <label>结算板块</label>
+                    <select name="board" id="editBoard" class="form-control">
+                        <option value="">未分配</option>
+                        <?php foreach (BusinessTypeService::boards() as $b): ?>
+                            <option value="<?= e($b) ?>"><?= e($b) ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="form-group" style="margin-bottom:12px">
                     <label>备注</label>
@@ -415,6 +434,7 @@ function editBT(bt) {
     document.getElementById('editName').value = bt.name;
     document.getElementById('editPrice').value = bt.unit_price;
     document.getElementById('editPricingType').value = bt.pricing_type;
+    document.getElementById('editBoard').value = bt.board || '';
     document.getElementById('editRemark').value = bt.remark || '';
     document.getElementById('editStatus').value = bt.status;
     var enabled = (bt.extra_fee_ids || []).map(String);

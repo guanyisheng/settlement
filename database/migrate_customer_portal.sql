@@ -1,5 +1,11 @@
--- 顾客端：下单/接单/转单回池/评价 + 罚款 + 会员档次与月年卡
+-- 顾客端：下单/接单/转单回池/评价 + 罚款(可撤销) + 会员档次与月年卡
 -- phpMyAdmin 先选中业务库再执行（可重复）。
+--
+-- 生产部署顺序（同一业务库）：
+--   1) database/migrate_extra_fee_items.sql
+--   2) database/migrate_extra_fee_fixed_amount.sql   （需要「直接加钱」时）
+--   3) database/migrate_customer_portal.sql           （本文件）
+-- 代码部署后访问 /customer/ 验证；后台侧栏应出现「额外收费 / 顾客订单 / 打手罚款 / 会员管理」
 
 CREATE TABLE IF NOT EXISTS client_orders (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -42,8 +48,13 @@ CREATE TABLE IF NOT EXISTS staff_fines (
     amount DECIMAL(12,2) NOT NULL,
     reason VARCHAR(255) NOT NULL,
     created_by INT UNSIGNED DEFAULT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/REVOKED',
+    revoked_by INT UNSIGNED DEFAULT NULL,
+    revoked_at DATETIME DEFAULT NULL,
+    revoke_note VARCHAR(255) DEFAULT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_fines_staff (staff_id)
+    KEY idx_fines_staff (staff_id),
+    KEY idx_fines_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS membership_tiers (
@@ -92,6 +103,16 @@ CALL qz_add_column_if_missing('users', 'accept_client_orders', "TINYINT(1) NOT N
 CALL qz_add_column_if_missing('users', 'contact_wechat', "VARCHAR(100) DEFAULT NULL COMMENT '联系微信' AFTER accept_client_orders");
 CALL qz_add_column_if_missing('users', 'growth_points', "INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '会员成长值' AFTER contact_wechat");
 CALL qz_add_column_if_missing('users', 'membership_expire_at', "DATETIME DEFAULT NULL COMMENT '月卡年卡到期' AFTER growth_points");
+
+-- 顾客账号默认不接单（避免出现在「指定打手」列表）
+UPDATE users SET accept_client_orders = 0 WHERE role = 'CLIENT' AND IFNULL(accept_client_orders, 1) = 1;
+CALL qz_add_column_if_missing('client_orders', 'base_amount', "DECIMAL(12,2) DEFAULT NULL COMMENT '加价前基础金额' AFTER amount");
+CALL qz_add_column_if_missing('client_orders', 'extra_fees_json', "TEXT DEFAULT NULL COMMENT '额外收费快照JSON' AFTER base_amount");
+CALL qz_add_column_if_missing('client_orders', 'extra_fees_rate', "DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '额外收费百分比合计' AFTER extra_fees_json");
+CALL qz_add_column_if_missing('staff_fines', 'status', "VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/REVOKED' AFTER created_by");
+CALL qz_add_column_if_missing('staff_fines', 'revoked_by', "INT UNSIGNED DEFAULT NULL AFTER status");
+CALL qz_add_column_if_missing('staff_fines', 'revoked_at', "DATETIME DEFAULT NULL AFTER revoked_by");
+CALL qz_add_column_if_missing('staff_fines', 'revoke_note', "VARCHAR(255) DEFAULT NULL AFTER revoked_at");
 
 -- 顾客角色（ENUM 扩值，可重复执行）
 DROP PROCEDURE IF EXISTS qz_ensure_client_role;

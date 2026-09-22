@@ -92,6 +92,21 @@ require __DIR__ . '/partials/head.php';
                        value="<?= e($userRow['nickname'] ?? '') ?>" placeholder="显示名称">
             </div>
 
+            <div class="form-section-title" style="margin-top:20px">顾客单设置</div>
+            <div class="form-group">
+                <label>联系微信（顾客可见）</label>
+                <input type="text" name="contact_wechat" class="form-control"
+                       value="<?= e($userRow['contact_wechat'] ?? '') ?>" placeholder="选填">
+            </div>
+            <div class="form-group">
+                <label class="login-remember" style="display:flex;gap:8px;align-items:center">
+                    <input type="hidden" name="accept_client_orders" value="0">
+                    <input type="checkbox" name="accept_client_orders" value="1"
+                        <?= ((int) ($userRow['accept_client_orders'] ?? 1) === 1) ? 'checked' : '' ?>>
+                    <span>接顾客商城单</span>
+                </label>
+            </div>
+
             <div class="form-section-title" style="margin-top:20px">毛照</div>
             <div class="form-group">
                 <label>上传毛照（可多选）</label>

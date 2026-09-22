@@ -31,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'rate_a_pct'    => $_POST['rate_a_pct'] ?? '',
                 'rate_b_pct'    => $_POST['rate_b_pct'] ?? '',
                 'manual_amount' => $_POST['manual_amount'] ?? '',
+                'paid_amount'   => $_POST['paid_amount'] ?? '',
             ]);
             flash('success', '订单已通过');
         } elseif ($action === 'reject') {
@@ -166,13 +167,8 @@ require __DIR__ . '/partials/header.php';
                         <td><span class="badge badge-<?= strtolower($o['status']) === 'pending' ? 'pending' : (strtolower($o['status']) === 'approved' ? 'approved' : (strtolower($o['status']) === 'rejected' ? 'rejected' : 'settled')) ?>"><?= orderStatusLabel($o['status']) ?></span></td>
                         <td><?= formatDateTimeShort($o['created_at']) ?></td>
                         <td class="actions">
-                            <a href="?<?= http_build_query(array_merge($_GET, ['id' => $o['id']])) ?>" class="btn btn-sm">详情</a>
+                            <a href="?<?= http_build_query(array_merge($_GET, ['id' => $o['id']])) ?>" class="btn btn-sm btn-primary">详情审核</a>
                             <?php if ($o['status'] === 'PENDING' && $canReview): ?>
-                                <form method="post" style="display:inline" onsubmit="return confirm('确认通过此订单？')">
-                                    <input type="hidden" name="action" value="approve">
-                                    <input type="hidden" name="order_id" value="<?= $o['id'] ?>">
-                                    <button type="submit" class="btn btn-sm btn-success">通过</button>
-                                </form>
                                 <button type="button" class="btn btn-sm btn-danger" onclick="openReject(<?= $o['id'] ?>)">拒绝</button>
                             <?php endif; ?>
                             <?php if ($canDelete): ?>
@@ -234,7 +230,16 @@ require __DIR__ . '/partials/header.php';
                 <dt>基础金额</dt><dd><?= formatMoney($viewOrder['base_amount']) ?></dd>
                 <?php endif; ?>
                 <?php endif; ?>
-                <dt>订单金额</dt><dd class="money"><?= formatMoney($viewOrder['amount']) ?></dd>
+                <dt>订单金额（原价）</dt><dd class="money"><?= formatMoney($viewOrder['amount']) ?></dd>
+                <dt>实付金额</dt>
+                <dd class="money">
+                    <?= formatMoney(
+                        isset($viewOrder['paid_amount']) && $viewOrder['paid_amount'] !== null && $viewOrder['paid_amount'] !== ''
+                            ? (float) $viewOrder['paid_amount']
+                            : (float) $viewOrder['amount']
+                    ) ?>
+                    <span style="color:var(--text-muted);font-size:12px">（总流水口径；未改则=原价）</span>
+                </dd>
                 <dt>打手结算</dt>
                 <dd class="money">
                     <?= formatMoney($viewOrder['staff_amount'] ?? SettlementService::calcStaffAmount((float) $viewOrder['amount'])) ?>
@@ -265,19 +270,29 @@ require __DIR__ . '/partials/header.php';
                 $ra = round(((float) ($viewOrder['rate_a'] ?? $defaultRates['rate_a'])) * 100, 2);
                 $rb = round(((float) ($viewOrder['rate_b'] ?? $defaultRates['rate_b'])) * 100, 2);
                 $orderAmount = (float) $viewOrder['amount'];
+                $paidDefault = isset($viewOrder['paid_amount']) && $viewOrder['paid_amount'] !== null && $viewOrder['paid_amount'] !== ''
+                    ? (float) $viewOrder['paid_amount']
+                    : $orderAmount;
                 $calcSa = SettlementService::calcStaffAmount(
-                    $orderAmount,
+                    $paidDefault,
                     $ra / 100,
                     $rb / 100
                 );
             ?>
             <hr style="border-color:var(--border);margin:16px 0">
             <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">
-                改倍率会<strong>自动重算</strong>结算金额。特殊单若要直接定金额，勾选「手动指定」后再填。
+                客服须在详情审核。实付未改按原价；改了按实付算流水与打手结算。勾选「手动指定」可直接定结算金额。
             </p>
             <form method="post" id="settleForm">
                 <input type="hidden" name="order_id" value="<?= (int) $viewOrder['id'] ?>">
                 <div class="form-row">
+                    <div class="form-group">
+                        <label>实付金额（总流水）</label>
+                        <input type="number" name="paid_amount" id="settlePaid" class="form-control" step="0.01" min="0"
+                               value="<?= e((string) $paidDefault) ?>"
+                               placeholder="不改则按原价 <?= e((string) $orderAmount) ?>">
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px">原价 <?= formatMoney($orderAmount) ?>；优惠后可改成实付</p>
+                    </div>
                     <div class="form-group">
                         <label>基础倍率 %</label>
                         <input type="number" name="rate_a_pct" id="settleRateA" class="form-control" step="0.01" min="0" max="100" value="<?= e((string) $ra) ?>">
@@ -290,9 +305,9 @@ require __DIR__ . '/partials/header.php';
                         <label>打手结算金额</label>
                         <input type="number" name="staff_amount" id="settleAmount" class="form-control" step="0.01" min="0"
                                value="<?= e((string) $calcSa) ?>" readonly
-                               data-order-amount="<?= e((string) $orderAmount) ?>">
+                               data-order-amount="<?= e((string) $paidDefault) ?>">
                         <p style="font-size:12px;color:var(--text-muted);margin-top:6px" id="settleHint">
-                            按倍率自动计算：订单 <?= formatMoney($orderAmount) ?> × 倍率
+                            按倍率自动计算：实付 × 倍率
                         </p>
                     </div>
                 </div>
@@ -353,29 +368,37 @@ document.getElementById('detailModal')?.addEventListener('click', e => {
     const rateA = document.getElementById('settleRateA');
     const rateB = document.getElementById('settleRateB');
     const amount = document.getElementById('settleAmount');
+    const paid = document.getElementById('settlePaid');
     const manual = document.getElementById('manualAmount');
     const hint = document.getElementById('settleHint');
     if (!rateA || !rateB || !amount) return;
-    const orderAmount = parseFloat(amount.dataset.orderAmount || '0') || 0;
+
+    function baseAmount() {
+        if (paid && paid.value !== '') return parseFloat(paid.value) || 0;
+        return parseFloat(amount.dataset.orderAmount || '0') || 0;
+    }
 
     function recalc() {
         if (manual?.checked) return;
+        const orderAmount = baseAmount();
+        amount.dataset.orderAmount = String(orderAmount);
         const a = (parseFloat(rateA.value) || 0) / 100;
         const b = (parseFloat(rateB.value) || 0) / 100;
         const sa = Math.round(orderAmount * a * b * 100) / 100;
         amount.value = sa.toFixed(2);
         if (hint) {
-            hint.textContent = '按倍率自动计算：' + orderAmount.toFixed(2) + ' × ' +
+            hint.textContent = '按实付自动计算：' + orderAmount.toFixed(2) + ' × ' +
                 (a * 100).toFixed(2) + '% × ' + (b * 100).toFixed(2) + '% = ' + sa.toFixed(2);
         }
     }
 
     rateA.addEventListener('input', recalc);
     rateB.addEventListener('input', recalc);
+    paid?.addEventListener('input', recalc);
     manual?.addEventListener('change', function () {
         amount.readOnly = !manual.checked;
         if (!manual.checked) recalc();
-        else if (hint) hint.textContent = '已手动指定，改倍率不会改这个金额';
+        else if (hint) hint.textContent = '已手动指定，改倍率/实付不会改这个金额';
     });
     recalc();
 })();

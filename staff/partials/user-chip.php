@@ -5,6 +5,12 @@ $initial = mb_substr($user['nickname'] ?: $user['username'], 0, 1);
 ?>
 <div class="user-chip">
     <div class="avatar"><?= e($initial) ?></div>
+    <a href="/customer/index.php" class="logout-btn">
+        <span>前台</span>
+    </a>
+    <a href="/choose_portal.php" class="logout-btn">
+        <span>切换</span>
+    </a>
     <a href="/staff/profile.php" class="logout-btn">
         <?= svgIcon('staff', 'chip-icon') ?><span>我的</span>
     </a>

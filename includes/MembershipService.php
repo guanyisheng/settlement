@@ -104,15 +104,16 @@ class MembershipService
         $name = trim((string) ($data['name'] ?? ''));
         $min = max(0, (int) ($data['min_points'] ?? 0));
         $sort = (int) ($data['sort_order'] ?? 0);
+        $status = isset($data['status']) ? ((int) $data['status'] ? 1 : 0) : 1;
         if ($name === '') {
             throw new InvalidArgumentException('档次名称不能为空');
         }
         if ($id) {
-            $pdo->prepare('UPDATE membership_tiers SET name=?, min_points=?, sort_order=? WHERE id=?')
-                ->execute([$name, $min, $sort, $id]);
+            $pdo->prepare('UPDATE membership_tiers SET name=?, min_points=?, sort_order=?, status=? WHERE id=?')
+                ->execute([$name, $min, $sort, $status, $id]);
         } else {
-            $pdo->prepare('INSERT INTO membership_tiers (name, min_points, sort_order, status) VALUES (?,?,?,1)')
-                ->execute([$name, $min, $sort]);
+            $pdo->prepare('INSERT INTO membership_tiers (name, min_points, sort_order, status) VALUES (?,?,?,?)')
+                ->execute([$name, $min, $sort, $status]);
         }
     }
 
@@ -126,17 +127,36 @@ class MembershipService
         $days = max(1, (int) ($data['duration_days'] ?? ($type === 'year' ? 365 : 30)));
         $bonus = max(0, (int) ($data['bonus_points'] ?? 0));
         $price = max(0, (float) ($data['price'] ?? 0));
+        $status = isset($data['status']) ? ((int) $data['status'] ? 1 : 0) : 1;
         if ($name === '') {
             throw new InvalidArgumentException('卡名不能为空');
         }
         if ($id) {
             $pdo->prepare(
-                'UPDATE membership_cards SET name=?, card_type=?, duration_days=?, bonus_points=?, price=? WHERE id=?'
-            )->execute([$name, $type, $days, $bonus, $price, $id]);
+                'UPDATE membership_cards SET name=?, card_type=?, duration_days=?, bonus_points=?, price=?, status=? WHERE id=?'
+            )->execute([$name, $type, $days, $bonus, $price, $status, $id]);
         } else {
             $pdo->prepare(
-                'INSERT INTO membership_cards (name, card_type, duration_days, bonus_points, price, status) VALUES (?,?,?,?,?,1)'
-            )->execute([$name, $type, $days, $bonus, $price]);
+                'INSERT INTO membership_cards (name, card_type, duration_days, bonus_points, price, status) VALUES (?,?,?,?,?,?)'
+            )->execute([$name, $type, $days, $bonus, $price, $status]);
         }
+    }
+
+    /** @return list<array<string,mixed>> */
+    public static function tiersAll(PDO $pdo): array
+    {
+        if (!self::isReady($pdo)) {
+            return [];
+        }
+        return $pdo->query('SELECT * FROM membership_tiers ORDER BY min_points ASC, sort_order ASC')->fetchAll();
+    }
+
+    /** @return list<array<string,mixed>> */
+    public static function cardsAll(PDO $pdo): array
+    {
+        if (!self::isReady($pdo)) {
+            return [];
+        }
+        return $pdo->query('SELECT * FROM membership_cards ORDER BY id ASC')->fetchAll();
     }
 }

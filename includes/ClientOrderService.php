@@ -58,59 +58,161 @@ class ClientOrderService
         }
 
         $unit = (float) $bt['unit_price'];
-        $amount = round($unit * $qty, 2);
+        $baseAmount = round($unit * $qty, 2);
+
+        $gameName = trim((string) ($data['game_name'] ?? ''));
+        $gameId = trim((string) ($data['game_id'] ?? ''));
+        $gameClient = trim((string) ($data['game_client'] ?? ''));
+        $contact = trim((string) ($data['contact'] ?? ''));
+        if ($gameName === '') {
+            throw new InvalidArgumentException('请填写游戏名');
+        }
+        if ($gameId === '') {
+            throw new InvalidArgumentException('请填写游戏ID');
+        }
+        if ($gameClient === '') {
+            throw new InvalidArgumentException('请选择客户端');
+        }
+        if ($contact === '') {
+            throw new InvalidArgumentException('请填写联系方式（QQ/微信）');
+        }
+
+        require_once __DIR__ . '/ExtraFeeService.php';
+        $selectedIds = $data['extra_fee_ids'] ?? [];
+        if (!is_array($selectedIds)) {
+            $selectedIds = [];
+        }
+        $extra = ['items' => [], 'rate_total' => 0.0, 'fixed_total' => 0.0, 'json' => ''];
+        if (ExtraFeeService::isReady($pdo)) {
+            $extra = ExtraFeeService::resolveSelected($pdo, $btId, $selectedIds);
+        }
+        $amount = ExtraFeeService::applyToBaseAmount(
+            $baseAmount,
+            (float) $extra['rate_total'],
+            (float) ($extra['fixed_total'] ?? 0)
+        );
+
         $orderNo = generateNo('CO');
         $status = $toPool ? 'POOL' : 'WAITING';
         $staffVal = $toPool ? null : $staffId;
 
-        $ins = $pdo->prepare(
-            'INSERT INTO client_orders (order_no, client_id, business_type_id, staff_id, quantity, unit_price, amount, status, remark)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        );
-        $ins->execute([$orderNo, $clientId, $btId, $staffVal, $qty, $unit, $amount, $status, $remark !== '' ? $remark : null]);
+        try {
+            $ins = $pdo->prepare(
+                'INSERT INTO client_orders
+                 (order_no, client_id, business_type_id, staff_id, quantity, unit_price, amount, base_amount, extra_fees_json, extra_fees_rate, status, remark, game_name, game_id, game_client, contact)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $ins->execute([
+                $orderNo, $clientId, $btId, $staffVal, $qty, $unit, $amount,
+                $baseAmount,
+                $extra['json'] !== '' ? $extra['json'] : null,
+                $extra['rate_total'],
+                $status,
+                $remark !== '' ? $remark : null,
+                $gameName, $gameId, $gameClient, $contact,
+            ]);
+        } catch (PDOException $e) {
+            if (str_contains($e->getMessage(), 'game_name') || str_contains($e->getMessage(), 'Unknown column')) {
+                throw new RuntimeException('请先执行 database/migrate_dispatch_and_paid.sql');
+            }
+            $ins = $pdo->prepare(
+                'INSERT INTO client_orders (order_no, client_id, business_type_id, staff_id, quantity, unit_price, amount, status, remark)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $ins->execute([$orderNo, $clientId, $btId, $staffVal, $qty, $unit, $amount, $status, $remark !== '' ? $remark : null]);
+        }
         return (int) $pdo->lastInsertId();
     }
 
     public static function getAcceptingStaff(PDO $pdo, int $staffId): ?array
     {
-        try {
-            $stmt = $pdo->prepare(
-                "SELECT * FROM users WHERE id = ? AND deleted_at IS NULL AND status = 1
-                 AND (role = 'STAFF' OR accept_client_orders = 1)"
-            );
-            $stmt->execute([$staffId]);
-        } catch (PDOException) {
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND status = 1 AND role = 'STAFF'");
-            $stmt->execute([$staffId]);
-        }
-        $row = $stmt->fetch();
-        if (!$row) {
-            return null;
-        }
-        try {
-            if (isset($row['accept_client_orders']) && (int) $row['accept_client_orders'] === 0) {
-                return null;
+        $rows = self::listAcceptingStaff($pdo);
+        foreach ($rows as $row) {
+            if ((int) $row['id'] === $staffId) {
+                return $row;
             }
-        } catch (Throwable) {
         }
-        return $row;
+        return null;
     }
 
-    /** @return list<array<string,mixed>> */
+    /** 仅打手（含 RBAC 打手角色），绝不包含顾客 CLIENT */
     public static function listAcceptingStaff(PDO $pdo): array
     {
+        require_once __DIR__ . '/PermissionService.php';
+        $acceptFilter = '';
         try {
-            $sql = "SELECT u.id, u.username, u.nickname, u.contact_wechat
+            $pdo->query('SELECT accept_client_orders FROM users LIMIT 0');
+            $acceptFilter = ' AND IFNULL(u.accept_client_orders, 1) = 1';
+        } catch (PDOException) {
+            $acceptFilter = '';
+        }
+
+        $select = 'SELECT DISTINCT u.id, u.username, u.nickname';
+        try {
+            $pdo->query('SELECT contact_wechat FROM users LIMIT 0');
+            $select .= ', u.contact_wechat';
+        } catch (PDOException) {
+            $select .= ', NULL AS contact_wechat';
+        }
+
+        if (PermissionService::isRbacReady($pdo)) {
+            try {
+                $sql = "{$select}
+                        FROM users u
+                        LEFT JOIN user_roles ur ON ur.user_id = u.id
+                        LEFT JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL AND r.status = 1
+                        WHERE u.deleted_at IS NULL AND u.status = 1
+                          AND u.role != 'CLIENT'
+                          AND (u.role = 'STAFF' OR r.code = 'STAFF')
+                          {$acceptFilter}
+                        ORDER BY u.id DESC LIMIT 200";
+                return $pdo->query($sql)->fetchAll();
+            } catch (PDOException) {
+                // fall through
+            }
+        }
+
+        try {
+            $sql = "{$select}
                     FROM users u
                     WHERE u.deleted_at IS NULL AND u.status = 1
-                      AND (u.role = 'STAFF' OR u.accept_client_orders = 1)
-                      AND IFNULL(u.accept_client_orders, 1) = 1
+                      AND u.role = 'STAFF'
+                      {$acceptFilter}
                     ORDER BY u.id DESC LIMIT 200";
             return $pdo->query($sql)->fetchAll();
         } catch (PDOException) {
             return $pdo->query(
-                "SELECT id, username, nickname FROM users WHERE role = 'STAFF' AND status = 1 ORDER BY id DESC LIMIT 200"
+                "SELECT id, username, nickname, NULL AS contact_wechat
+                 FROM users WHERE role = 'STAFF' AND status = 1 ORDER BY id DESC LIMIT 200"
             )->fetchAll();
+        }
+    }
+
+    public static function getStaffPublic(PDO $pdo, int $staffId): ?array
+    {
+        $staff = self::getAcceptingStaff($pdo, $staffId);
+        if (!$staff) {
+            return null;
+        }
+        // 补全展示字段
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$staffId]);
+        $full = $stmt->fetch();
+        return $full ?: $staff;
+    }
+
+    public static function staffReviewStats(PDO $pdo, int $staffId): array
+    {
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) AS cnt, COALESCE(AVG(score),0) AS avg_score
+                 FROM client_order_reviews WHERE staff_id = ?'
+            );
+            $stmt->execute([$staffId]);
+            $row = $stmt->fetch() ?: ['cnt' => 0, 'avg_score' => 0];
+            return ['count' => (int) $row['cnt'], 'avg' => round((float) $row['avg_score'], 1)];
+        } catch (PDOException) {
+            return ['count' => 0, 'avg' => 0.0];
         }
     }
 
@@ -150,12 +252,14 @@ class ClientOrderService
     /** @return list<array<string,mixed>> */
     public static function listForStaff(PDO $pdo, int $staffId): array
     {
+        // 抢单池全部可见；指定给自己的待接/进行中/完成可见
         $stmt = $pdo->prepare(
             "SELECT o.*, b.name AS business_type_name, c.nickname AS client_name
              FROM client_orders o
              JOIN business_types b ON b.id = o.business_type_id
              JOIN users c ON c.id = o.client_id
-             WHERE o.staff_id = ? OR o.status = 'POOL'
+             WHERE o.status = 'POOL'
+                OR o.staff_id = ?
              ORDER BY FIELD(o.status,'POOL','WAITING','ACCEPTED','DOING','DONE','CANCELLED'), o.id DESC
              LIMIT 100"
         );
@@ -234,6 +338,59 @@ class ClientOrderService
         }
     }
 
+    /** 客服派单：勾选抢到单的打手 */
+    public static function assignStaff(PDO $pdo, int $orderId, int $staffId): void
+    {
+        if (!self::getAcceptingStaff($pdo, $staffId)) {
+            throw new InvalidArgumentException('该打手不可接单');
+        }
+        $order = self::getById($pdo, $orderId);
+        if (!$order) {
+            throw new RuntimeException('订单不存在');
+        }
+        if (in_array($order['status'], ['DONE', 'CANCELLED'], true)) {
+            throw new RuntimeException('订单已结束');
+        }
+        $stmt = $pdo->prepare(
+            "UPDATE client_orders
+             SET staff_id = ?, status = 'WAITING', transfer_note = NULL
+             WHERE id = ? AND status IN ('POOL','WAITING','ACCEPTED','DOING')"
+        );
+        $stmt->execute([$staffId, $orderId]);
+        if ($stmt->rowCount() === 0) {
+            throw new RuntimeException('派单失败');
+        }
+    }
+
+    /** 客服完成服务并结算打手 */
+    public static function completeByAdmin(PDO $pdo, int $orderId): void
+    {
+        $order = self::getById($pdo, $orderId);
+        if (!$order) {
+            throw new RuntimeException('订单不存在');
+        }
+        if ((int) ($order['staff_id'] ?? 0) <= 0) {
+            throw new RuntimeException('请先派单给打手');
+        }
+        if (!in_array($order['status'], ['WAITING', 'ACCEPTED', 'DOING'], true)) {
+            throw new RuntimeException('当前状态不可完成');
+        }
+        $amount = (float) $order['amount'];
+        $calc = SettlementService::calcByCrewMode($amount, false);
+        $staffAmount = $calc['staff_amount'];
+        $stmt = $pdo->prepare(
+            "UPDATE client_orders SET status = 'DONE', staff_amount = ?, completed_at = NOW(),
+             accepted_at = COALESCE(accepted_at, NOW())
+             WHERE id = ? AND status IN ('WAITING','ACCEPTED','DOING')"
+        );
+        $stmt->execute([$staffAmount, $orderId]);
+        if ($stmt->rowCount() === 0) {
+            throw new RuntimeException('完成失败');
+        }
+        require_once __DIR__ . '/MembershipService.php';
+        MembershipService::addGrowthFromSpend($pdo, (int) $order['client_id'], $amount);
+    }
+
     public static function complete(PDO $pdo, int $orderId, int $staffId): void
     {
         $order = self::getById($pdo, $orderId);
@@ -271,6 +428,10 @@ class ClientOrderService
         }
         if (in_array($order['status'], ['DONE', 'CANCELLED'], true)) {
             throw new RuntimeException('订单已结束');
+        }
+        // 顾客仅可取消待接/抢单池；已接单需管理员取消
+        if (!$asAdmin && !in_array($order['status'], ['WAITING', 'POOL'], true)) {
+            throw new RuntimeException('已接单后不可自行取消，请联系客服');
         }
         $pdo->prepare("UPDATE client_orders SET status = 'CANCELLED' WHERE id = ?")->execute([$orderId]);
     }

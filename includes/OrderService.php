@@ -396,9 +396,11 @@ class OrderService
                 throw new RuntimeException('客户不存在');
             }
 
+            $paidAmount = self::resolvePaidAmountInput($order, $override);
+
             if ((int) ($customer['is_prepaid'] ?? 0) === 1) {
                 $balance = (float) ($customer['balance'] ?? 0);
-                $deduct = (float) $order['amount'];
+                $deduct = $paidAmount;
                 if ($balance < $deduct) {
                     throw new RuntimeException('客户预存余额不足（当前 ' . formatMoney($balance) . '，需扣 ' . formatMoney($deduct) . '）');
                 }
@@ -409,20 +411,45 @@ class OrderService
             try {
                 $stmt = $pdo->prepare(
                     "UPDATE orders SET status = 'APPROVED', staff_amount = ?, rate_a = ?, rate_b = ?,
-                     reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
+                     paid_amount = ?, reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
                 );
-                $stmt->execute([$staffAmount, $rateA, $rateB, $reviewerId, $orderId]);
-            } catch (PDOException) {
-                $stmt = $pdo->prepare(
-                    "UPDATE orders SET status = 'APPROVED', staff_amount = ?, reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
-                );
-                $stmt->execute([$staffAmount, $reviewerId, $orderId]);
+                $stmt->execute([$staffAmount, $rateA, $rateB, $paidAmount, $reviewerId, $orderId]);
+            } catch (PDOException $e) {
+                if (str_contains($e->getMessage(), 'paid_amount') || str_contains($e->getMessage(), 'Unknown column')) {
+                    $stmt = $pdo->prepare(
+                        "UPDATE orders SET status = 'APPROVED', staff_amount = ?, rate_a = ?, rate_b = ?,
+                         reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
+                    );
+                    $stmt->execute([$staffAmount, $rateA, $rateB, $reviewerId, $orderId]);
+                } else {
+                    $stmt = $pdo->prepare(
+                        "UPDATE orders SET status = 'APPROVED', staff_amount = ?, reviewed_by = ?, reviewed_at = NOW(), reject_reason = NULL WHERE id = ?"
+                    );
+                    $stmt->execute([$staffAmount, $reviewerId, $orderId]);
+                }
             }
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    /** 实付：详情有填用填的，否则用原价 */
+    public static function resolvePaidAmountInput(array $order, array $override = []): float
+    {
+        $raw = $override['paid_amount'] ?? null;
+        if ($raw !== null && $raw !== '') {
+            $paid = round((float) $raw, 2);
+            if ($paid < 0) {
+                throw new InvalidArgumentException('实付金额不能为负');
+            }
+            return $paid;
+        }
+        if (isset($order['paid_amount']) && $order['paid_amount'] !== null && $order['paid_amount'] !== '') {
+            return round((float) $order['paid_amount'], 2);
+        }
+        return round((float) $order['amount'], 2);
     }
 
     /**
@@ -452,16 +479,18 @@ class OrderService
             $rateB = (float) $data['rate_b_pct'] / 100;
         }
 
+        // 结算基数优先用实付（客服详情可改），未改则用原价
+        $baseAmount = self::resolvePaidAmountInput($order, $data);
         $isDuo = (int) ($order['co_staff_id'] ?? 0) > 0;
         if ($isDuo) {
             // 双人：表单/快照里的 rate_b 按「每人半份」理解，总额=半份×2
-            $calc = SettlementService::calcByCrewMode((float) $order['amount'], true, $rateA, $rateB);
+            $calc = SettlementService::calcByCrewMode($baseAmount, true, $rateA, $rateB);
             $rateA = $calc['rate_a'];
             $rateB = $calc['rate_b'];
             $calculated = $calc['staff_amount'];
         } else {
             // 一人：rate_b 即全部份额（常见 100%）
-            $calculated = SettlementService::calcStaffAmount((float) $order['amount'], $rateA, $rateB);
+            $calculated = SettlementService::calcStaffAmount($baseAmount, $rateA, $rateB);
         }
         $manual = !empty($data['manual_amount']) || !empty($data['settlement_manual']);
 

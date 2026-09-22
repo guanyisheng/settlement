@@ -45,14 +45,14 @@ class DashboardService
             return self::getStatsLegacy($pdo, $today);
         }
 
-        return [
+        return self::withFinanceExtras($pdo, [
             'today_orders'            => $todayOrders,
             'pending_orders'          => $pendingOrders,
             'today_settled'           => $todaySettled,
             'pending_withdrawals'     => $pendingWithdrawals,
             'total_income'            => $totalIncome,
             'pending_withdraw_amount' => $pendingWithdrawAmount,
-        ];
+        ]);
     }
 
     private static function getStatsLegacy(PDO $pdo, string $today): array
@@ -74,13 +74,101 @@ class DashboardService
             "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'PENDING'"
         )->fetchColumn();
 
-        return [
+        return self::withFinanceExtras($pdo, [
             'today_orders'            => $todayOrders,
             'pending_orders'          => $pendingOrders,
             'today_settled'           => $todaySettled,
             'pending_withdrawals'     => $pendingWithdrawals,
             'total_income'            => $totalIncome,
             'pending_withdraw_amount' => $pendingWithdrawAmount,
+        ]);
+    }
+
+    private static function withFinanceExtras(PDO $pdo, array $stats): array
+    {
+        $stats['deposit_total'] = self::depositTotal($pdo);
+        $stats['revenue_total'] = self::revenueTotal($pdo);
+        $stats['withdraw_paid_total'] = self::withdrawPaidTotal($pdo);
+        $stats['net_profit'] = round($stats['revenue_total'] - $stats['withdraw_paid_total'], 2);
+        return $stats;
+    }
+
+    public static function depositTotal(PDO $pdo): float
+    {
+        try {
+            return (float) $pdo->query(
+                "SELECT COALESCE(SUM(
+                    CASE
+                      WHEN deposit IS NULL OR TRIM(deposit) = '' THEN 0
+                      WHEN deposit REGEXP '^[0-9]+(\\.[0-9]+)?' THEN CAST(deposit AS DECIMAL(12,2))
+                      ELSE 0
+                    END
+                ), 0) FROM users WHERE deleted_at IS NULL"
+            )->fetchColumn();
+        } catch (PDOException) {
+            try {
+                return (float) $pdo->query(
+                    "SELECT COALESCE(SUM(CAST(deposit AS DECIMAL(12,2))),0) FROM users WHERE deposit REGEXP '^[0-9]'"
+                )->fetchColumn();
+            } catch (PDOException) {
+                return 0.0;
+            }
+        }
+    }
+
+    public static function revenueTotal(PDO $pdo): float
+    {
+        $alive = self::alive();
+        try {
+            return (float) $pdo->query(
+                "SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0)
+                 FROM orders WHERE status IN ('APPROVED','SETTLED') AND {$alive}"
+            )->fetchColumn();
+        } catch (PDOException) {
+            try {
+                return (float) $pdo->query(
+                    "SELECT COALESCE(SUM(amount), 0) FROM orders WHERE status IN ('APPROVED','SETTLED') AND {$alive}"
+                )->fetchColumn();
+            } catch (PDOException) {
+                return 0.0;
+            }
+        }
+    }
+
+    public static function withdrawPaidTotal(PDO $pdo): float
+    {
+        return (float) $pdo->query(
+            "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'PAID'"
+        )->fetchColumn();
+    }
+
+    public static function boardStats(PDO $pdo, string $board): array
+    {
+        $alive = self::alive('o');
+        $board = trim($board);
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT
+                    COUNT(*) AS order_count,
+                    COALESCE(SUM(COALESCE(o.paid_amount, o.amount)),0) AS revenue,
+                    COALESCE(SUM(o.staff_amount),0) AS staff_pay
+                 FROM orders o
+                 JOIN business_types bt ON bt.id = o.business_type_id
+                 WHERE o.status IN ('APPROVED','SETTLED') AND {$alive} AND bt.board = ?"
+            );
+            $stmt->execute([$board]);
+            $row = $stmt->fetch() ?: [];
+        } catch (PDOException) {
+            $row = ['order_count' => 0, 'revenue' => 0, 'staff_pay' => 0];
+        }
+        $revenue = (float) ($row['revenue'] ?? 0);
+        $staffPay = (float) ($row['staff_pay'] ?? 0);
+        return [
+            'board' => $board,
+            'order_count' => (int) ($row['order_count'] ?? 0),
+            'revenue' => $revenue,
+            'staff_pay' => $staffPay,
+            'profit' => round($revenue - $staffPay, 2),
         ];
     }
 

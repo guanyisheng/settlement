@@ -99,6 +99,9 @@ $isBoss = Auth::isBoss();
             <a href="/admin/business_types.php" class="nav-item <?= $currentPage === 'business_types' ? 'active' : '' ?>">
                 <?= svgIcon('business_types') ?><span>业务类型</span>
             </a>
+            <a href="/admin/business_types.php#extra-fees" class="nav-item">
+                <?= svgIcon('business_types') ?><span>额外收费</span>
+            </a>
             <?php endif; ?>
             <?php if (Auth::canAccessPage('client_orders')): ?>
             <a href="/admin/client_orders.php" class="nav-item <?= $currentPage === 'client_orders' ? 'active' : '' ?>">
@@ -123,7 +126,8 @@ $isBoss = Auth::isBoss();
             <div class="topbar-title"><?= e($pageTitle) ?></div>
             <div class="topbar-user">
                 <span>登录：<?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
-                <?php if (method_exists('Auth', 'needsPortalChoice') && Auth::needsPortalChoice()): ?>
+                <a href="/customer/index.php" class="topbar-link"><span>前台</span></a>
+                <?php if (Auth::needsPortalChoice()): ?>
                 <a href="/choose_portal.php" class="topbar-link"><span>切换入口</span></a>
                 <?php endif; ?>
                 <a href="/admin/password.php" class="topbar-link">

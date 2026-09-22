@@ -269,7 +269,12 @@ class UserService
     /** 顾客端注册（立即启用，无需审核） */
     public static function registerClient(PDO $pdo, array $data): int
     {
-        return self::createUser($pdo, $data, 'CLIENT', Auth::STATUS_ACTIVE);
+        $id = self::createUser($pdo, $data, 'CLIENT', Auth::STATUS_ACTIVE);
+        try {
+            $pdo->prepare('UPDATE users SET accept_client_orders = 0 WHERE id = ?')->execute([$id]);
+        } catch (PDOException) {
+        }
+        return $id;
     }
 
     public static function createStaff(PDO $pdo, array $data, ?array $photoFile = null): int
@@ -421,6 +426,21 @@ class UserService
         }
 
         $pdo->prepare('UPDATE users SET nickname = ? WHERE id = ?')->execute([$nickname, $userId]);
+
+        try {
+            $wechat = trim((string) ($data['contact_wechat'] ?? ''));
+            $accept = !empty($data['accept_client_orders']) ? 1 : 0;
+            // 未传接单开关时保持原值（避免其它保存路径误关）
+            if (array_key_exists('accept_client_orders', $data)) {
+                $pdo->prepare('UPDATE users SET contact_wechat = ?, accept_client_orders = ? WHERE id = ?')
+                    ->execute([$wechat !== '' ? $wechat : null, $accept, $userId]);
+            } elseif (array_key_exists('contact_wechat', $data)) {
+                $pdo->prepare('UPDATE users SET contact_wechat = ? WHERE id = ?')
+                    ->execute([$wechat !== '' ? $wechat : null, $userId]);
+            }
+        } catch (PDOException) {
+            // 未跑顾客端迁移时忽略
+        }
 
         // 毛照（可多选）
         $photoFiles = $files['photos'] ?? null;

@@ -11,6 +11,7 @@ $bodyClass = $bodyClass ?? '';
     <meta name="theme-color" content="<?= brandThemeColor() ?>">
     <link rel="icon" href="<?= brandLogo() ?>" type="image/png">
     <title><?= e($pageTitle) ?></title>
-    <link rel="stylesheet" href="/staff/assets/css/style.css">
+    <link rel="stylesheet" href="/admin/assets/css/admin.css">
+    <link rel="stylesheet" href="/customer/assets/css/customer.css">
 </head>
 <body class="<?= e($bodyClass) ?>">
