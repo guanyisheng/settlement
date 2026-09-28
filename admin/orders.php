@@ -213,6 +213,17 @@ require __DIR__ . '/partials/header.php';
                 </dd>
                 <dt>系统编号</dt><dd><?= e($viewOrder['order_no']) ?></dd>
                 <dt>打手</dt><dd><?= e($viewOrder['staff_name']) ?><?php if (!empty($viewOrder['co_staff_name'])): ?> + <?= e($viewOrder['co_staff_name']) ?>（附加）<?php endif; ?></dd>
+                <dt>接单归属</dt>
+                <dd>
+                    <?php if (!empty($viewOrder['dispatcher_name']) || !empty($viewOrder['dispatcher_username'])): ?>
+                        <?= e($viewOrder['dispatcher_name'] ?: $viewOrder['dispatcher_username']) ?>
+                        <?php if (!empty($viewOrder['dispatcher_username'])): ?>
+                            <span style="color:var(--text-muted);font-size:12px">(@<?= e($viewOrder['dispatcher_username']) ?>)</span>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        -
+                    <?php endif; ?>
+                </dd>
                 <dt>客户</dt><dd><?= e($viewOrder['customer_name']) ?></dd>
                 <dt>业务类型</dt><dd><?= e($viewOrder['business_type_name']) ?></dd>
                 <dt>数量</dt><dd><?= e((string) (int) $viewOrder['quantity']) ?></dd>
@@ -231,15 +242,21 @@ require __DIR__ . '/partials/header.php';
                 <?php endif; ?>
                 <?php endif; ?>
                 <dt>订单金额（原价）</dt><dd class="money"><?= formatMoney($viewOrder['amount']) ?></dd>
+                <?php
+                $paidShown = isset($viewOrder['paid_amount']) && $viewOrder['paid_amount'] !== null && $viewOrder['paid_amount'] !== ''
+                    ? (float) $viewOrder['paid_amount']
+                    : (float) $viewOrder['amount'];
+                $discountShown = round((float) $viewOrder['amount'] - $paidShown, 2);
+                ?>
                 <dt>实付金额</dt>
                 <dd class="money">
-                    <?= formatMoney(
-                        isset($viewOrder['paid_amount']) && $viewOrder['paid_amount'] !== null && $viewOrder['paid_amount'] !== ''
-                            ? (float) $viewOrder['paid_amount']
-                            : (float) $viewOrder['amount']
-                    ) ?>
-                    <span style="color:var(--text-muted);font-size:12px">（总流水口径；未改则=原价）</span>
+                    <?= formatMoney($paidShown) ?>
+                    <span style="color:var(--text-muted);font-size:12px">（总流水；未改则=原价）</span>
                 </dd>
+                <?php if ($discountShown > 0.009): ?>
+                <dt>优惠差额</dt>
+                <dd class="money" style="color:var(--warning)"><?= formatMoney($discountShown) ?>（原价−实付）</dd>
+                <?php endif; ?>
                 <dt>打手结算</dt>
                 <dd class="money">
                     <?= formatMoney($viewOrder['staff_amount'] ?? SettlementService::calcStaffAmount((float) $viewOrder['amount'])) ?>
@@ -291,7 +308,10 @@ require __DIR__ . '/partials/header.php';
                         <input type="number" name="paid_amount" id="settlePaid" class="form-control" step="0.01" min="0"
                                value="<?= e((string) $paidDefault) ?>"
                                placeholder="不改则按原价 <?= e((string) $orderAmount) ?>">
-                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px">原价 <?= formatMoney($orderAmount) ?>；优惠后可改成实付</p>
+                        <p style="font-size:12px;color:var(--text-muted);margin-top:6px">
+                            原价 <?= formatMoney($orderAmount) ?>；有优惠就改成实付（例：原价100优惠后付90 → 填90）。流水与结算按实付算。
+                        </p>
+                        <p style="font-size:12px;color:var(--warning);margin-top:4px" id="settleDiscountHint"></p>
                     </div>
                     <div class="form-group">
                         <label>基础倍率 %</label>
@@ -378,6 +398,9 @@ document.getElementById('detailModal')?.addEventListener('click', e => {
         return parseFloat(amount.dataset.orderAmount || '0') || 0;
     }
 
+    const discountHint = document.getElementById('settleDiscountHint');
+    const originalAmount = <?= json_encode(!empty($viewOrder['amount']) ? (float) $viewOrder['amount'] : 0) ?>;
+
     function recalc() {
         if (manual?.checked) return;
         const orderAmount = baseAmount();
@@ -389,6 +412,12 @@ document.getElementById('detailModal')?.addEventListener('click', e => {
         if (hint) {
             hint.textContent = '按实付自动计算：' + orderAmount.toFixed(2) + ' × ' +
                 (a * 100).toFixed(2) + '% × ' + (b * 100).toFixed(2) + '% = ' + sa.toFixed(2);
+        }
+        if (discountHint) {
+            const diff = Math.round((originalAmount - orderAmount) * 100) / 100;
+            discountHint.textContent = diff > 0.009
+                ? ('优惠差额：¥' + diff.toFixed(2) + '（原价−实付）')
+                : '';
         }
     }
 

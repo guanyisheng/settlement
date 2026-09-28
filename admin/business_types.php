@@ -213,7 +213,7 @@ require __DIR__ . '/partials/header.php';
                     <label>结算板块</label>
                     <select name="board" class="form-control">
                         <option value="">未分配</option>
-                        <?php foreach (BusinessTypeService::boards() as $b): ?>
+                        <?php foreach (BusinessTypeService::boards($pdo) as $b): ?>
                             <option value="<?= e($b) ?>"><?= e($b) ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -316,7 +316,7 @@ require __DIR__ . '/partials/header.php';
                     <label>结算板块</label>
                     <select name="board" id="editBoard" class="form-control">
                         <option value="">未分配</option>
-                        <?php foreach (BusinessTypeService::boards() as $b): ?>
+                        <?php foreach (BusinessTypeService::boards($pdo) as $b): ?>
                             <option value="<?= e($b) ?>"><?= e($b) ?></option>
                         <?php endforeach; ?>
                     </select>

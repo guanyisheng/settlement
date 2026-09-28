@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES
 ('brand_name', '清账系统'),
-('brand_logo', '/img/logo.png'),
+('brand_logo', 'https://wp-1301153132.cos.ap-chengdu.myqcloud.com/shasha/orders/logo.png'),
 ('brand_theme_color', '#001A72'),
 ('settlement_rate_a', '0.8'),
 ('settlement_rate_b', '0.5'),

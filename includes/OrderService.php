@@ -117,8 +117,28 @@ class OrderService
             if (!$co || !empty($co['deleted_at']) || (int) ($co['status'] ?? 0) !== 1) {
                 throw new InvalidArgumentException('附加打手不存在或未启用');
             }
+            if (($co['role'] ?? '') === 'CLIENT' || !UserService::userIsStaffLike($pdo, $co)) {
+                throw new InvalidArgumentException('附加打手只能选打手账号，不能选顾客');
+            }
         } else {
             $coStaffId = 0;
+        }
+
+        $dispatcherId = (int) ($data['dispatcher_id'] ?? 0);
+        if (self::hasDispatcherColumn($pdo)) {
+            if ($dispatcherId <= 0) {
+                throw new InvalidArgumentException('请选择接单归属（派单客服）');
+            }
+            require_once __DIR__ . '/UserService.php';
+            $disp = UserService::getById($pdo, $dispatcherId);
+            if (!$disp || !empty($disp['deleted_at']) || (int) ($disp['status'] ?? 0) !== 1) {
+                throw new InvalidArgumentException('派单客服不存在或未启用');
+            }
+            if (($disp['role'] ?? '') === 'CLIENT') {
+                throw new InvalidArgumentException('派单归属不能选顾客账号');
+            }
+        } else {
+            $dispatcherId = 0;
         }
 
         self::assertWechatOrderAvailable($pdo, $wechatOrderNo, $staffId);
@@ -272,16 +292,38 @@ class OrderService
             }
         }
 
+        $orderId = (int) $pdo->lastInsertId();
+        if ($dispatcherId > 0 && $orderId > 0 && self::hasDispatcherColumn($pdo)) {
+            $pdo->prepare('UPDATE orders SET dispatcher_id = ? WHERE id = ?')
+                ->execute([$dispatcherId, $orderId]);
+        }
+
         return [
-            'id'              => (int) $pdo->lastInsertId(),
+            'id'              => $orderId,
             'order_no'        => $orderNo,
             'wechat_order_no' => $wechatOrderNo,
             'amount'          => $amount,
             'base_amount'     => $baseAmount,
             'staff_amount'    => $staffAmount,
             'co_staff_id'     => $coStaffId ?: null,
+            'dispatcher_id'   => $dispatcherId ?: null,
             'extra_fees_rate' => $extraRate,
         ];
+    }
+
+    public static function hasDispatcherColumn(PDO $pdo): bool
+    {
+        static $ready = null;
+        if ($ready !== null) {
+            return $ready;
+        }
+        try {
+            $pdo->query('SELECT dispatcher_id FROM orders LIMIT 0');
+            $ready = true;
+        } catch (PDOException) {
+            $ready = false;
+        }
+        return $ready;
     }
 
     /** 微信单号查重，并给出是否已被拉为附加打手的提示 */
@@ -630,13 +672,23 @@ class OrderService
             ? ', o.co_staff_id, cu.nickname AS co_staff_name'
             : ', NULL AS co_staff_id, NULL AS co_staff_name';
         $coJoin = $hasCo ? 'LEFT JOIN users cu ON cu.id = o.co_staff_id' : '';
+        $dispSelect = '';
+        $dispJoin = '';
+        if (self::hasDispatcherColumn($pdo)) {
+            $dispSelect = ', du.nickname AS dispatcher_name, du.username AS dispatcher_username';
+            $dispJoin = 'LEFT JOIN users du ON du.id = o.dispatcher_id';
+        } else {
+            $dispSelect = ', NULL AS dispatcher_name, NULL AS dispatcher_username';
+        }
 
-        $sql = "SELECT o.*, c.name AS customer_name, b.name AS business_type_name, u.nickname AS staff_name {$coSelect}
+        $sql = "SELECT o.*, c.name AS customer_name, b.name AS business_type_name, u.nickname AS staff_name
+                       {$coSelect}{$dispSelect}
                 FROM orders o
                 JOIN customers c ON c.id = o.customer_id
                 JOIN business_types b ON b.id = o.business_type_id
                 JOIN users u ON u.id = o.staff_id
                 {$coJoin}
+                {$dispJoin}
                 WHERE " . implode(' AND ', $where) . "
                 ORDER BY o.created_at DESC
                 LIMIT 500";

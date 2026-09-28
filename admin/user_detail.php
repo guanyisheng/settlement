@@ -40,6 +40,14 @@ if ($userId <= 0 || !$detailUser || !empty($detailUser['deleted_at'])) {
 
 $rbac = PermissionService::isRbacReady($pdo);
 $isStaffLike = UserService::userIsStaffLike($pdo, $detailUser);
+$isClientUser = ($detailUser['role'] ?? '') === 'CLIENT';
+$showHrFields = !$isClientUser; // 员工/打手都可填押金等；顾客不用
+$listReturn = trim((string) ($_POST['return'] ?? $_GET['return'] ?? ''));
+if ($listReturn !== '' && !str_starts_with($listReturn, '/admin/users.php')) {
+    $listReturn = '';
+}
+$usersListUrl = $listReturn !== '' ? $listReturn : '/admin/users.php';
+$detailQs = 'id=' . $userId . ($listReturn !== '' ? '&return=' . rawurlencode($listReturn) : '');
 $error = flash('error');
 $success = flash('success');
 
@@ -86,10 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($rbac && isset($payload['role_ids'])) {
                     RoleService::setUserRoles($pdo, $userId, $payload['role_ids']);
                 } elseif (!$rbac && isset($payload['role'])) {
-                    UserService::updateEmployee($pdo, $userId, $payload);
+                    UserService::updateEmployee($pdo, $userId, array_merge($_POST, $payload));
                 }
             } else {
-                UserService::updateEmployee($pdo, $userId, $payload);
+                UserService::updateEmployee($pdo, $userId, array_merge($_POST, $payload));
             }
             flash('success', '档案已更新：' . ($detailUser['nickname'] ?: $detailUser['username']) . ' (#' . $userId . ')');
         } elseif ($action === 'reset_password') {
@@ -125,10 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             throw new InvalidArgumentException('无效操作');
         }
-        redirect('/admin/user_detail.php?id=' . $userId);
+        redirect('/admin/user_detail.php?' . $detailQs);
     } catch (Throwable $e) {
         flashError($e, 'USER');
-        redirect('/admin/user_detail.php?id=' . $userId);
+        redirect('/admin/user_detail.php?' . $detailQs);
     }
 }
 
@@ -138,6 +146,8 @@ if (!$detailUser) {
     redirect('/admin/users.php');
 }
 $isStaffLike = UserService::userIsStaffLike($pdo, $detailUser);
+$isClientUser = ($detailUser['role'] ?? '') === 'CLIENT';
+$showHrFields = !$isClientUser;
 
 $stats = UserService::getStaffStats($pdo, $userId);
 $balance = BalanceService::getBalanceSummary($pdo, $userId);
@@ -174,14 +184,14 @@ $currentPage = 'users';
 $pageTitle = '用户详情';
 require __DIR__ . '/partials/header.php';
 
-$detailAction = '/admin/user_detail.php?id=' . $userId;
+$detailAction = '/admin/user_detail.php?' . $detailQs;
 $subjectName = trim((string) ($detailUser['nickname'] ?? '')) !== ''
     ? (string) $detailUser['nickname']
     : (string) $detailUser['username'];
 $selfId = (int) Auth::id();
 ?>
 
-<a href="/admin/users.php" class="btn btn-sm btn-back" style="margin-bottom:16px">
+<a href="<?= e($usersListUrl) ?>" class="btn btn-sm btn-back" id="backToUsersList" style="margin-bottom:16px">
     <?= svgIcon('arrow-left', 'btn-icon') ?><span>返回用户列表</span>
 </a>
 
@@ -224,113 +234,85 @@ $selfId = (int) Auth::id();
         <span style="font-size:13px;color:var(--text-muted)"><?= e($roleText) ?><?= $isStaffLike ? ' · 打手向' : '' ?></span>
     </div>
     <div class="card-body">
-        <?php if ($isStaffLike): ?>
-            <form method="post" action="<?= e($detailAction) ?>">
-                <input type="hidden" name="id" value="<?= (int) $userId ?>">
-                <input type="hidden" name="action" value="update_profile">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>用户名（登录账号，不可改）</label>
-                        <input type="text" class="form-control" value="<?= e($detailUser['username']) ?>" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>昵称</label>
-                        <input type="text" name="nickname" class="form-control" value="<?= e($detailUser['nickname'] ?? '') ?>">
-                    </div>
-                    <div class="form-group">
-                        <label>入职时间</label>
-                        <input type="date" name="hired_at" class="form-control" value="<?= e($detailUser['hired_at'] ?? '') ?>">
-                    </div>
-                    <div class="form-group">
-                        <label>考核官</label>
-                        <input type="text" name="examiner" class="form-control" value="<?= e($detailUser['examiner'] ?? '') ?>">
-                    </div>
-                    <div class="form-group">
-                        <label>押金</label>
-                        <input type="text" name="deposit" class="form-control" value="<?= e((string) ($detailUser['deposit'] ?? '')) ?>" placeholder="如 100">
-                    </div>
-                    <div class="form-group">
-                        <label>状态</label>
-                        <select name="status" class="form-control">
-                            <option value="1" <?= (int) ($detailUser['status'] ?? 1) === 1 ? 'selected' : '' ?>>启用</option>
-                            <option value="0" <?= (int) ($detailUser['status'] ?? 1) === 0 ? 'selected' : '' ?>>禁用</option>
-                            <option value="2" <?= (int) ($detailUser['status'] ?? 1) === 2 ? 'selected' : '' ?>>待审核</option>
-                        </select>
+        <form method="post" action="<?= e($detailAction) ?>">
+            <input type="hidden" name="id" value="<?= (int) $userId ?>">
+            <input type="hidden" name="action" value="update_profile">
+            <?php if ($listReturn !== ''): ?>
+                <input type="hidden" name="return" value="<?= e($listReturn) ?>">
+            <?php endif; ?>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>用户名（登录账号，不可改）</label>
+                    <input type="text" class="form-control" value="<?= e($detailUser['username']) ?>" disabled>
+                </div>
+                <div class="form-group">
+                    <label>昵称</label>
+                    <input type="text" name="nickname" class="form-control" value="<?= e($detailUser['nickname'] ?? '') ?>">
+                </div>
+                <?php if ($showHrFields): ?>
+                <div class="form-group">
+                    <label>入职时间</label>
+                    <input type="date" name="hired_at" class="form-control" value="<?= e($detailUser['hired_at'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label>考核官</label>
+                    <input type="text" name="examiner" class="form-control" value="<?= e($detailUser['examiner'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label>押金</label>
+                    <input type="text" name="deposit" class="form-control" value="<?= e((string) ($detailUser['deposit'] ?? '')) ?>" placeholder="如 100">
+                </div>
+                <?php endif; ?>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select name="status" class="form-control">
+                        <option value="1" <?= (int) ($detailUser['status'] ?? 1) === 1 ? 'selected' : '' ?>>启用</option>
+                        <option value="0" <?= (int) ($detailUser['status'] ?? 1) === 0 ? 'selected' : '' ?>>禁用</option>
+                        <?php if ($isStaffLike): ?>
+                        <option value="2" <?= (int) ($detailUser['status'] ?? 1) === 2 ? 'selected' : '' ?>>待审核</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin:8px 0 16px">
+                注册时间：<?= formatDateTime($detailUser['created_at'] ?? null) ?>
+                <?php if ($showHrFields && !$isStaffLike): ?> · 员工也可填押金，无需勾打手<?php endif; ?>
+            </p>
+            <?php if ($rbac && $assignableRoles !== [] && $canEditRoles): ?>
+                <div class="form-group" style="margin-top:12px">
+                    <label>角色（可多选）</label>
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
+                        <?php foreach ($assignableRoles as $r): ?>
+                            <?php $rid = (int) $r['id']; ?>
+                            <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:6px">
+                                <input type="checkbox" name="role_ids[]" value="<?= $rid ?>"
+                                    <?= in_array($rid, $roleIds, true) ? 'checked' : '' ?>>
+                                <span><?= e($r['name']) ?></span>
+                            </label>
+                        <?php endforeach; ?>
                     </div>
                 </div>
-                <p style="font-size:12px;color:var(--text-muted);margin:8px 0 16px">注册时间：<?= formatDateTime($detailUser['created_at'] ?? null) ?></p>
-                <?php if ($rbac && $assignableRoles !== [] && $canEditRoles): ?>
-                    <div class="form-group" style="margin-top:12px">
-                        <label>角色（可多选）</label>
-                        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
-                            <?php foreach ($assignableRoles as $r): ?>
-                                <?php $rid = (int) $r['id']; ?>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:6px">
-                                    <input type="checkbox" name="role_ids[]" value="<?= $rid ?>"
-                                        <?= in_array($rid, $roleIds, true) ? 'checked' : '' ?>>
-                                    <span><?= e($r['name']) ?></span>
-                                </label>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                <?php endif; ?>
-                <button type="submit" class="btn btn-primary">保存档案</button>
-            </form>
-        <?php else: ?>
-            <form method="post" action="<?= e($detailAction) ?>">
-                <input type="hidden" name="id" value="<?= (int) $userId ?>">
-                <input type="hidden" name="action" value="update_profile">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>用户名（登录账号，不可改）</label>
-                        <input type="text" class="form-control" value="<?= e($detailUser['username']) ?>" disabled>
-                    </div>
-                    <div class="form-group">
-                        <label>昵称</label>
-                        <input type="text" name="nickname" class="form-control" value="<?= e($detailUser['nickname'] ?? '') ?>">
-                    </div>
-                    <div class="form-group">
-                        <label>状态</label>
-                        <select name="status" class="form-control">
-                            <option value="1" <?= (int) ($detailUser['status'] ?? 1) === 1 ? 'selected' : '' ?>>启用</option>
-                            <option value="0" <?= (int) ($detailUser['status'] ?? 1) === 0 ? 'selected' : '' ?>>禁用</option>
-                        </select>
-                    </div>
+            <?php elseif (!$rbac && $canEditRoles && !$isStaffLike): ?>
+                <div class="form-group" style="margin-top:12px">
+                    <label>角色</label>
+                    <select name="role" class="form-control">
+                        <option value="CUSTOMER_SERVICE" <?= ($detailUser['role'] ?? '') === 'CUSTOMER_SERVICE' ? 'selected' : '' ?>>客服</option>
+                        <option value="EXAMINER" <?= ($detailUser['role'] ?? '') === 'EXAMINER' ? 'selected' : '' ?>>考官</option>
+                        <?php if (Auth::isBoss()): ?>
+                            <option value="BOSS" <?= in_array($detailUser['role'] ?? '', ['BOSS', 'ADMIN'], true) ? 'selected' : '' ?>>老板</option>
+                            <option value="STAFF" <?= ($detailUser['role'] ?? '') === 'STAFF' ? 'selected' : '' ?>>打手</option>
+                        <?php endif; ?>
+                    </select>
                 </div>
-                <?php if ($rbac && $assignableRoles !== [] && $canEditRoles): ?>
-                    <div class="form-group" style="margin-top:12px">
-                        <label>角色（可多选）</label>
-                        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
-                            <?php foreach ($assignableRoles as $r): ?>
-                                <?php $rid = (int) $r['id']; ?>
-                                <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:6px">
-                                    <input type="checkbox" name="role_ids[]" value="<?= $rid ?>"
-                                        <?= in_array($rid, $roleIds, true) ? 'checked' : '' ?>>
-                                    <span><?= e($r['name']) ?></span>
-                                </label>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                <?php elseif (!$rbac && $canEditRoles): ?>
-                    <div class="form-group" style="margin-top:12px">
-                        <label>角色</label>
-                        <select name="role" class="form-control">
-                            <option value="CUSTOMER_SERVICE" <?= ($detailUser['role'] ?? '') === 'CUSTOMER_SERVICE' ? 'selected' : '' ?>>客服</option>
-                            <option value="EXAMINER" <?= ($detailUser['role'] ?? '') === 'EXAMINER' ? 'selected' : '' ?>>考官</option>
-                            <?php if (Auth::isBoss()): ?>
-                                <option value="BOSS" <?= in_array($detailUser['role'] ?? '', ['BOSS', 'ADMIN'], true) ? 'selected' : '' ?>>老板</option>
-                                <option value="STAFF" <?= ($detailUser['role'] ?? '') === 'STAFF' ? 'selected' : '' ?>>打手</option>
-                            <?php endif; ?>
-                        </select>
-                    </div>
-                <?php endif; ?>
-                <p style="font-size:12px;color:var(--text-muted);margin:8px 0 16px">注册时间：<?= formatDateTime($detailUser['created_at'] ?? null) ?></p>
-                <button type="submit" class="btn btn-primary">保存档案</button>
-            </form>
-        <?php endif; ?>
+            <?php endif; ?>
+            <button type="submit" class="btn btn-primary">保存档案</button>
+        </form>
 
         <form method="post" action="<?= e($detailAction) ?>" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
             <input type="hidden" name="id" value="<?= (int) $userId ?>">
+            <?php if ($listReturn !== ''): ?>
+                <input type="hidden" name="return" value="<?= e($listReturn) ?>">
+            <?php endif; ?>
             <input type="hidden" name="action" value="reset_password">
             <div class="form-row">
                 <div class="form-group">

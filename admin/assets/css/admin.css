@@ -71,6 +71,59 @@ a:hover { color: var(--primary-hover); }
 
 .sidebar-nav { padding: 12px 0; }
 
+.nav-group { margin: 4px 0; }
+
+.nav-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 24px;
+    border: 0;
+    border-left: 3px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: all .15s;
+}
+
+.nav-group-toggle:hover {
+    color: var(--text);
+    background: rgba(255,255,255,.04);
+}
+
+.nav-group.open > .nav-group-toggle {
+    color: var(--text);
+}
+
+.nav-group-caret {
+    margin-left: auto;
+    font-size: 12px;
+    opacity: .7;
+    transition: transform .15s;
+}
+
+.nav-group.open > .nav-group-toggle .nav-group-caret {
+    transform: rotate(180deg);
+}
+
+.nav-group-body {
+    display: none;
+    padding: 2px 0 6px;
+}
+
+.nav-group.open > .nav-group-body {
+    display: block;
+}
+
+.nav-group-body .nav-item {
+    padding-left: 36px;
+    font-size: 13px;
+}
+
 .nav-item {
     display: flex;
     align-items: center;

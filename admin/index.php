@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/DashboardService.php';
 require_once __DIR__ . '/../includes/OrderService.php';
 require_once __DIR__ . '/../includes/WithdrawalService.php';
 require_once __DIR__ . '/../includes/UserService.php';
+require_once __DIR__ . '/../includes/BoardService.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
 Auth::requirePage('dashboard');
@@ -15,6 +16,7 @@ Auth::requirePage('dashboard');
 $pdo = Database::getConnection();
 $stats = DashboardService::getStats($pdo);
 $pendingRegistrations = Auth::isBoss() ? UserService::countPendingRegistrations($pdo) : 0;
+$boardNames = BoardService::names($pdo, true);
 
 $recentOrders = OrderService::search($pdo, ['status' => 'PENDING']);
 $recentOrders = array_slice($recentOrders, 0, 5);
@@ -41,28 +43,57 @@ require __DIR__ . '/partials/header.php';
         <div class="value success"><?= formatMoney($stats['today_settled']) ?></div>
     </div>
     <div class="stat-card">
-        <div class="label">待处理提现</div>
+        <div class="label">待处理提现（笔数）</div>
         <div class="value warning"><?= $stats['pending_withdrawals'] ?></div>
     </div>
     <div class="stat-card">
-        <div class="label">系统总收入</div>
-        <div class="value success"><?= formatMoney($stats['total_income']) ?></div>
+        <div class="label">系统总收入（订单原价）</div>
+        <div class="value success"><?= formatMoney($stats['order_amount_total'] ?? $stats['total_income']) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">按单钱/原价合计；优惠前</p>
     </div>
     <div class="stat-card">
-        <div class="label">当前待提现金额</div>
-        <div class="value danger"><?= formatMoney($stats['pending_withdraw_amount']) ?></div>
+        <div class="label">总流水（实付）</div>
+        <div class="value success"><?= formatMoney($stats['revenue_total'] ?? 0) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">客服点「通过」后按实付计入；未改实付=原价</p>
+    </div>
+    <div class="stat-card">
+        <div class="label">打手结算合计</div>
+        <div class="value danger"><?= formatMoney($stats['staff_pay_total'] ?? 0) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">已通过报单的打手应得（含已提/未提）</p>
+    </div>
+    <div class="stat-card">
+        <div class="label">已提现合计（已放款）</div>
+        <div class="value danger"><?= formatMoney($stats['withdraw_paid_total'] ?? 0) ?></div>
+    </div>
+    <div class="stat-card">
+        <div class="label">处理中提现</div>
+        <div class="value warning"><?= formatMoney($stats['pending_withdraw_amount'] ?? 0) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">已申请、尚未放款</p>
+        <a href="/admin/withdrawals.php?status=PENDING" class="btn btn-sm btn-danger" style="margin-top:8px">去处理提现</a>
+    </div>
+    <div class="stat-card">
+        <div class="label">未发起提现</div>
+        <div class="value warning"><?= formatMoney($stats['unrequested_withdraw'] ?? 0) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">结算 − 已放款 − 处理中 − 罚款</p>
+    </div>
+    <div class="stat-card">
+        <div class="label">待提现总金额</div>
+        <div class="value danger"><?= formatMoney($stats['awaiting_withdraw_total'] ?? 0) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">处理中 + 未发起（还在系统里的打手款）</p>
+    </div>
+    <div class="stat-card">
+        <div class="label">打手款总量</div>
+        <div class="value primary"><?= formatMoney($stats['staff_money_total'] ?? 0) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">已放款 + 处理中 + 未发起</p>
     </div>
     <div class="stat-card">
         <div class="label">押金总和</div>
         <div class="value primary"><?= formatMoney($stats['deposit_total'] ?? 0) ?></div>
     </div>
     <div class="stat-card">
-        <div class="label">总流水（实付）</div>
-        <div class="value success"><?= formatMoney($stats['revenue_total'] ?? 0) ?></div>
-    </div>
-    <div class="stat-card">
-        <div class="label">净利润（流水−已提现）</div>
+        <div class="label">净利润（流水−打手结算）</div>
         <div class="value warning"><?= formatMoney($stats['net_profit'] ?? 0) ?></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">实付流水 − 打手结算</p>
     </div>
     <?php if (Auth::isBoss()): ?>
     <div class="stat-card">
@@ -76,11 +107,18 @@ require __DIR__ . '/partials/header.php';
 </div>
 
 <div class="card" style="margin-bottom:24px">
-    <div class="card-header"><h2>板块结算工作台</h2></div>
+    <div class="card-header" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">板块结算工作台</h2>
+        <a class="btn btn-sm" href="/admin/board_settlement.php">管理/自定义板块</a>
+    </div>
     <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px">
-        <?php foreach (['三角洲', '暗区', '微契约'] as $board): ?>
-            <a class="btn btn-primary" href="/admin/board_settlement.php?board=<?= rawurlencode($board) ?>"><?= e($board) ?>结算</a>
-        <?php endforeach; ?>
+        <?php if ($boardNames === []): ?>
+            <span style="color:var(--text-muted);font-size:13px">暂无板块，请执行 migrate_settlement_boards.sql 或去自定义</span>
+        <?php else: ?>
+            <?php foreach ($boardNames as $board): ?>
+                <a class="btn btn-primary" href="/admin/board_settlement.php?board=<?= rawurlencode($board) ?>"><?= e($board) ?>结算</a>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 </div>
 

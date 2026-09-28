@@ -27,6 +27,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'grant') {
             MembershipService::grantCard($pdo, (int) ($_POST['user_id'] ?? 0), (int) ($_POST['card_id'] ?? 0));
             flash('success', '已发卡');
+        } elseif ($action === 'update_client') {
+            MembershipService::updateClient($pdo, (int) ($_POST['user_id'] ?? 0), $_POST);
+            flash('success', '顾客已更新（同步到客户管理）');
+        } elseif ($action === 'backfill_links') {
+            $n = MembershipService::backfillCustomerLinks($pdo);
+            flash('success', "已同步 {$n} 个门户顾客到客户管理");
         }
     } catch (Throwable $e) {
         flash('error', $e->getMessage());
@@ -178,24 +184,60 @@ require __DIR__ . '/partials/header.php';
 </div>
 
 <div class="card">
-    <div class="card-header"><h2>顾客账号</h2></div>
+    <div class="card-header" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+        <h2 style="margin:0">顾客账号（可编辑，与「客户管理」同一批人）</h2>
+        <form method="post" style="margin:0">
+            <input type="hidden" name="action" value="backfill_links">
+            <button class="btn btn-sm" type="submit">同步到客户管理</button>
+        </form>
+    </div>
     <div class="card-body" style="padding:0">
+        <p style="padding:12px 16px 0;color:var(--text-muted);font-size:13px;margin:0">
+            改昵称/状态会同步到报单用的「客户管理」。预存余额请到
+            <a href="/admin/customers.php">客户管理</a> 改。需先执行
+            <code>database/migrate_customer_unify.sql</code>。
+        </p>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>成长值</th><th>会员到期</th><th>状态</th></tr></thead>
+                <thead>
+                <tr>
+                    <th>ID</th><th>用户名</th><th>昵称</th><th>成长值</th><th>会员到期</th><th>状态</th><th>新密码</th><th>保存</th>
+                </tr>
+                </thead>
                 <tbody>
                 <?php foreach ($clients as $u): ?>
+                    <?php $fid = 'client-form-' . (int) $u['id']; ?>
+                    <form method="post" id="<?= $fid ?>"></form>
                     <tr>
                         <td><?= (int) $u['id'] ?></td>
                         <td><?= e($u['username']) ?></td>
-                        <td><?= e($u['nickname'] ?: '-') ?></td>
-                        <td><?= (int) ($u['growth_points'] ?? 0) ?></td>
-                        <td><?= e($u['membership_expire_at'] ?: '-') ?></td>
-                        <td><?= ((int) ($u['status'] ?? 0) === 1) ? '启用' : '禁用' ?></td>
+                        <td>
+                            <input type="hidden" form="<?= $fid ?>" name="action" value="update_client">
+                            <input type="hidden" form="<?= $fid ?>" name="user_id" value="<?= (int) $u['id'] ?>">
+                            <input form="<?= $fid ?>" name="nickname" class="form-control" value="<?= e($u['nickname'] ?: $u['username']) ?>">
+                        </td>
+                        <td>
+                            <input form="<?= $fid ?>" type="number" name="growth_points" class="form-control"
+                                   value="<?= (int) ($u['growth_points'] ?? 0) ?>" min="0">
+                        </td>
+                        <td>
+                            <input form="<?= $fid ?>" type="datetime-local" name="membership_expire_at" class="form-control"
+                                   value="<?= e(!empty($u['membership_expire_at']) ? date('Y-m-d\TH:i', strtotime((string) $u['membership_expire_at'])) : '') ?>">
+                        </td>
+                        <td>
+                            <select form="<?= $fid ?>" name="status" class="form-control">
+                                <option value="1" <?= (int) ($u['status'] ?? 0) === 1 ? 'selected' : '' ?>>启用</option>
+                                <option value="0" <?= (int) ($u['status'] ?? 0) === 0 ? 'selected' : '' ?>>禁用</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input form="<?= $fid ?>" type="text" name="new_password" class="form-control" placeholder="不改留空" autocomplete="new-password">
+                        </td>
+                        <td><button form="<?= $fid ?>" class="btn btn-sm btn-primary">保存</button></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if ($clients === []): ?>
-                    <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无顾客账号</td></tr>
+                    <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">暂无顾客账号</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>

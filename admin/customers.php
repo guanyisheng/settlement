@@ -40,6 +40,15 @@ require __DIR__ . '/partials/header.php';
 <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 
+<div class="alert alert-success" style="margin-bottom:16px">
+    门户注册的顾客会自动出现在本列表（与「会员管理 → 顾客账号」是同一批人）。
+    改名称/状态会同步门户昵称。成长值、会员卡请到
+    <a href="/admin/membership.php">会员管理</a>。
+    <?php if (!CustomerService::hasUserIdColumn($pdo)): ?>
+        <br>请先执行 <code>database/migrate_customer_unify.sql</code> 再点会员页「同步到客户管理」。
+    <?php endif; ?>
+</div>
+
 <div class="card">
     <div class="card-header"><h2>添加客户</h2></div>
     <div class="card-body">
@@ -80,7 +89,7 @@ require __DIR__ . '/partials/header.php';
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th><th>名称</th><th>预存余额</th><th>预存客户</th><th>备注</th><th>状态</th><th>创建时间</th><th>操作</th>
+                        <th>ID</th><th>名称</th><th>门户账号</th><th>预存余额</th><th>预存客户</th><th>备注</th><th>状态</th><th>创建时间</th><th>操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -88,6 +97,16 @@ require __DIR__ . '/partials/header.php';
                     <tr>
                         <td><?= $c['id'] ?></td>
                         <td><?= e($c['name']) ?></td>
+                        <td style="font-size:12px">
+                            <?php if (!empty($c['portal_username'])): ?>
+                                <?= e($c['portal_username']) ?>
+                                <?php if (isset($c['growth_points'])): ?>
+                                    <span style="color:var(--text-muted)">·成长<?= (int) $c['growth_points'] ?></span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span style="color:var(--text-muted)">仅手工录入</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="money"><?= formatMoney($c['balance'] ?? 0) ?></td>
                         <td><?= !empty($c['is_prepaid']) ? '是' : '否' ?></td>
                         <td><?= e($c['remark'] ?: '-') ?></td>

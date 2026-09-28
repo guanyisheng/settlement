@@ -280,7 +280,7 @@ $statusLabel = static function (int $status): string {
                             <td><?= formatDateTimeShort($u['created_at'] ?? null) ?></td>
                             <td><?= e($statusLabel((int) ($u['status'] ?? 0))) ?></td>
                             <td class="actions">
-                                <a class="btn btn-sm" href="/admin/user_detail.php?id=<?= $uid ?>">详细</a>
+                                <a class="btn btn-sm js-user-detail" href="/admin/user_detail.php?id=<?= $uid ?>&return=<?= rawurlencode('/admin/users.php' . $qs()) ?>">详细</a>
                                 <?php if ($canResetRow): ?>
                                 <button type="button" class="btn btn-sm" data-reset-id="<?= $uid ?>" data-reset-name="<?= e($u['username']) ?>" onclick="openResetEl(this)">重置密码</button>
                                 <?php endif; ?>
@@ -346,6 +346,25 @@ function openResetEl(el) {
 function closeReset() {
     document.getElementById('resetModal').hidden = true;
 }
+
+(function () {
+    var key = 'admin-users-scroll';
+    document.querySelectorAll('a.js-user-detail').forEach(function (a) {
+        a.addEventListener('click', function () {
+            try { sessionStorage.setItem(key, String(window.scrollY || window.pageYOffset || 0)); } catch (e) {}
+        });
+    });
+    try {
+        var y = sessionStorage.getItem(key);
+        if (y !== null && y !== '') {
+            sessionStorage.removeItem(key);
+            var top = parseInt(y, 10) || 0;
+            requestAnimationFrame(function () {
+                window.scrollTo(0, top);
+            });
+        }
+    } catch (e) {}
+})();
 </script>
 
 <?php require __DIR__ . '/partials/footer.php'; ?>

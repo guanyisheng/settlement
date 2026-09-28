@@ -9,6 +9,26 @@ $pageTitle = $pageTitle ?? '管理后台';
 $adminSessionUser = Auth::user();
 $user = $adminSessionUser;
 $isBoss = Auth::isBoss();
+
+$navSettlePages = ['orders', 'withdrawals', 'client_orders', 'fines'];
+$navUserPages = ['registrations', 'users', 'staff', 'employees', 'roles', 'customers', 'membership'];
+$navBizPages = ['business_types'];
+$navSettleOpen = in_array($currentPage, $navSettlePages, true);
+$navUserOpen = in_array($currentPage, $navUserPages, true);
+$navBizOpen = in_array($currentPage, $navBizPages, true);
+
+$canSettle = Auth::canAccessPage('orders')
+    || Auth::canAccessPage('withdrawals')
+    || Auth::canAccessPage('client_orders')
+    || Auth::canAccessPage('fines');
+$canUsers = Auth::canAccessPage('registrations')
+    || Auth::canAccessPage('users')
+    || Auth::canAccessPage('staff')
+    || Auth::canAccessPage('employees')
+    || Auth::canAccessPage('roles')
+    || Auth::canAccessPage('customers')
+    || Auth::canAccessPage('membership');
+$canBiz = Auth::canAccessPage('business_types');
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -50,72 +70,104 @@ $isBoss = Auth::isBoss();
                 <?= svgIcon('report') ?><span>报单</span>
             </a>
             <?php endif; ?>
-            <?php if (Auth::canAccessPage('orders')): ?>
-            <a href="/admin/orders.php" class="nav-item <?= $currentPage === 'orders' ? 'active' : '' ?>">
-                <?= svgIcon('orders') ?><span>订单管理</span>
-            </a>
-            <?php endif; ?>
-            <?php if (Auth::canAccessPage('withdrawals')): ?>
-            <a href="/admin/withdrawals.php" class="nav-item <?= $currentPage === 'withdrawals' ? 'active' : '' ?>">
-                <?= svgIcon('withdrawals') ?><span>提现管理</span>
-            </a>
-            <?php endif; ?>
-            <?php if (Auth::canAccessPage('password')): ?>
-            <a href="/admin/password.php" class="nav-item <?= $currentPage === 'password' ? 'active' : '' ?>">
-                <?= svgIcon('password') ?><span>修改密码</span>
-            </a>
-            <?php endif; ?>
             <?php if (Auth::canAccessPage('statistics')): ?>
             <a href="/admin/statistics.php" class="nav-item <?= $currentPage === 'statistics' ? 'active' : '' ?>">
                 <?= svgIcon('statistics') ?><span>数据统计</span>
             </a>
             <?php endif; ?>
-            <?php if (Auth::canAccessPage('registrations')): ?>
-            <a href="/admin/registrations.php" class="nav-item <?= $currentPage === 'registrations' ? 'active' : '' ?>">
-                <?= svgIcon('registrations') ?><span>注册审核</span>
-            </a>
+
+            <?php if ($canSettle): ?>
+            <div class="nav-group <?= $navSettleOpen ? 'open' : '' ?>" data-nav-group="settle">
+                <button type="button" class="nav-group-toggle" aria-expanded="<?= $navSettleOpen ? 'true' : 'false' ?>">
+                    <?= svgIcon('orders') ?><span>结算管理</span>
+                    <span class="nav-group-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="nav-group-body">
+                    <?php if (Auth::canAccessPage('orders')): ?>
+                    <a href="/admin/orders.php" class="nav-item <?= $currentPage === 'orders' ? 'active' : '' ?>">
+                        <?= svgIcon('orders') ?><span>订单管理</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('withdrawals')): ?>
+                    <a href="/admin/withdrawals.php" class="nav-item <?= $currentPage === 'withdrawals' ? 'active' : '' ?>">
+                        <?= svgIcon('withdrawals') ?><span>提现管理</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('client_orders')): ?>
+                    <a href="/admin/client_orders.php" class="nav-item <?= $currentPage === 'client_orders' ? 'active' : '' ?>">
+                        <?= svgIcon('orders') ?><span>顾客订单</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('fines')): ?>
+                    <a href="/admin/fines.php" class="nav-item <?= $currentPage === 'fines' ? 'active' : '' ?>">
+                        <?= svgIcon('withdrawals') ?><span>打手罚款</span>
+                    </a>
+                    <?php endif; ?>
+                </div>
+            </div>
             <?php endif; ?>
-            <?php if (Auth::canAccessPage('users') || Auth::canAccessPage('staff') || Auth::canAccessPage('employees')): ?>
-            <a href="/admin/users.php" class="nav-item <?= in_array($currentPage, ['users', 'staff', 'employees'], true) ? 'active' : '' ?>">
-                <?= svgIcon('staff') ?><span>用户中心</span>
-            </a>
+
+            <?php if ($canUsers): ?>
+            <div class="nav-group <?= $navUserOpen ? 'open' : '' ?>" data-nav-group="users">
+                <button type="button" class="nav-group-toggle" aria-expanded="<?= $navUserOpen ? 'true' : 'false' ?>">
+                    <?= svgIcon('staff') ?><span>用户管理</span>
+                    <span class="nav-group-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="nav-group-body">
+                    <?php if (Auth::canAccessPage('registrations')): ?>
+                    <a href="/admin/registrations.php" class="nav-item <?= $currentPage === 'registrations' ? 'active' : '' ?>">
+                        <?= svgIcon('registrations') ?><span>注册审核</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('users') || Auth::canAccessPage('staff') || Auth::canAccessPage('employees')): ?>
+                    <a href="/admin/users.php" class="nav-item <?= in_array($currentPage, ['users', 'staff', 'employees'], true) ? 'active' : '' ?>">
+                        <?= svgIcon('staff') ?><span>用户中心</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('roles')): ?>
+                    <a href="/admin/roles.php" class="nav-item <?= $currentPage === 'roles' ? 'active' : '' ?>">
+                        <?= svgIcon('employees') ?><span>角色权限</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('customers')): ?>
+                    <a href="/admin/customers.php" class="nav-item <?= $currentPage === 'customers' ? 'active' : '' ?>">
+                        <?= svgIcon('customers') ?><span>客户管理</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('membership')): ?>
+                    <a href="/admin/membership.php" class="nav-item <?= $currentPage === 'membership' ? 'active' : '' ?>">
+                        <?= svgIcon('customers') ?><span>会员管理</span>
+                    </a>
+                    <?php endif; ?>
+                </div>
+            </div>
             <?php endif; ?>
-            <?php if (Auth::canAccessPage('roles')): ?>
-            <a href="/admin/roles.php" class="nav-item <?= $currentPage === 'roles' ? 'active' : '' ?>">
-                <?= svgIcon('employees') ?><span>角色权限</span>
-            </a>
+
+            <?php if ($canBiz): ?>
+            <div class="nav-group <?= $navBizOpen ? 'open' : '' ?>" data-nav-group="biz">
+                <button type="button" class="nav-group-toggle" aria-expanded="<?= $navBizOpen ? 'true' : 'false' ?>">
+                    <?= svgIcon('business_types') ?><span>业务配置</span>
+                    <span class="nav-group-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="nav-group-body">
+                    <a href="/admin/business_types.php" class="nav-item <?= $currentPage === 'business_types' ? 'active' : '' ?>">
+                        <?= svgIcon('business_types') ?><span>业务类型</span>
+                    </a>
+                    <a href="/admin/business_types.php#extra-fees" class="nav-item">
+                        <?= svgIcon('business_types') ?><span>额外收费</span>
+                    </a>
+                </div>
+            </div>
             <?php endif; ?>
+
             <?php if (Auth::canAccessPage('settings')): ?>
             <a href="/admin/settings.php" class="nav-item <?= $currentPage === 'settings' ? 'active' : '' ?>">
                 <?= svgIcon('settings') ?><span>系统设置</span>
             </a>
             <?php endif; ?>
-            <?php if (Auth::canAccessPage('customers')): ?>
-            <a href="/admin/customers.php" class="nav-item <?= $currentPage === 'customers' ? 'active' : '' ?>">
-                <?= svgIcon('customers') ?><span>客户管理</span>
-            </a>
-            <?php endif; ?>
-            <?php if (Auth::canAccessPage('business_types')): ?>
-            <a href="/admin/business_types.php" class="nav-item <?= $currentPage === 'business_types' ? 'active' : '' ?>">
-                <?= svgIcon('business_types') ?><span>业务类型</span>
-            </a>
-            <a href="/admin/business_types.php#extra-fees" class="nav-item">
-                <?= svgIcon('business_types') ?><span>额外收费</span>
-            </a>
-            <?php endif; ?>
-            <?php if (Auth::canAccessPage('client_orders')): ?>
-            <a href="/admin/client_orders.php" class="nav-item <?= $currentPage === 'client_orders' ? 'active' : '' ?>">
-                <?= svgIcon('orders') ?><span>顾客订单</span>
-            </a>
-            <?php endif; ?>
-            <?php if (Auth::canAccessPage('fines')): ?>
-            <a href="/admin/fines.php" class="nav-item <?= $currentPage === 'fines' ? 'active' : '' ?>">
-                <?= svgIcon('withdrawals') ?><span>打手罚款</span>
-            </a>
-            <?php endif; ?>
-            <?php if (Auth::canAccessPage('membership')): ?>
-            <a href="/admin/membership.php" class="nav-item <?= $currentPage === 'membership' ? 'active' : '' ?>">
-                <?= svgIcon('customers') ?><span>会员管理</span>
+            <?php if (Auth::canAccessPage('password')): ?>
+            <a href="/admin/password.php" class="nav-item <?= $currentPage === 'password' ? 'active' : '' ?>">
+                <?= svgIcon('password') ?><span>修改密码</span>
             </a>
             <?php endif; ?>
         </nav>

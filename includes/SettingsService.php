@@ -24,7 +24,7 @@ class SettingsService
 
         return [
             'brand_name'        => '清账系统',
-            'brand_logo'        => '/img/logo.png',
+            'brand_logo'        => 'https://wp-1301153132.cos.ap-chengdu.myqcloud.com/shasha/orders/logo.png',
             'brand_theme_color' => '#001A72',
             'app_version'       => '3.0.0-beta',
             'settlement_rate_a' => (string) ($settlement['rate_a'] ?? 0.8),

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /** 品牌与站点信息（优先读数据库 system_settings，其次文件默认） */
 const BRAND_NAME_DEFAULT = '清账系统';
-const BRAND_LOGO_DEFAULT = '/img/logo.png';
+const BRAND_LOGO_DEFAULT = 'https://wp-1301153132.cos.ap-chengdu.myqcloud.com/shasha/orders/logo.png';
 const BRAND_THEME_COLOR_DEFAULT = '#001A72';
 
 require_once __DIR__ . '/SettingsService.php';

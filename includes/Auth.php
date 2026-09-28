@@ -577,11 +577,15 @@ class Auth
         }
     }
 
-    /** 报单权限（报单=报备，同一权限） */
+    /** 报单权限（报单=报备，同一权限）；顾客账号禁止报单 */
     public static function requireReport(): void
     {
         if (!self::check()) {
             redirect(self::LOGIN_URL);
+        }
+        if (self::isClient() || self::role() === 'CLIENT') {
+            flash('error', '顾客账号不能报单，请用打手账号');
+            redirect('/customer/index.php');
         }
         if (self::can('report.create') || self::role() === 'STAFF') {
             return;

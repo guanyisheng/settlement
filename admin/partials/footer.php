@@ -29,6 +29,31 @@ require_once __DIR__ . '/../../includes/brand.php';
     document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
         a.addEventListener('click', closeNav);
     });
+
+    // 侧栏大类折叠（当前页所在大类默认展开）
+    document.querySelectorAll('.nav-group-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var group = btn.closest('.nav-group');
+            if (!group) return;
+            var open = group.classList.toggle('open');
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            try {
+                var key = group.getAttribute('data-nav-group');
+                if (key) localStorage.setItem('admin-nav-' + key, open ? '1' : '0');
+            } catch (e) {}
+        });
+    });
+    document.querySelectorAll('.nav-group').forEach(function (group) {
+        if (group.classList.contains('open')) return;
+        try {
+            var key = group.getAttribute('data-nav-group');
+            if (key && localStorage.getItem('admin-nav-' + key) === '1') {
+                group.classList.add('open');
+                var btn = group.querySelector('.nav-group-toggle');
+                if (btn) btn.setAttribute('aria-expanded', 'true');
+            }
+        } catch (e) {}
+    });
 })();
 </script>
 <script src="/admin/assets/js/img-preview.js"></script>

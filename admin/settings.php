@@ -84,7 +84,7 @@ require __DIR__ . '/partials/header.php';
                 </div>
                 <div class="form-group">
                     <label>Logo 路径</label>
-                    <input type="text" name="brand_logo" class="form-control" value="<?= e($s['brand_logo']) ?>" placeholder="/img/logo.png">
+                    <input type="text" name="brand_logo" class="form-control" value="<?= e($s['brand_logo']) ?>" placeholder="https://wp-1301153132.cos.ap-chengdu.myqcloud.com/shasha/orders/logo.png">
                 </div>
                 <div class="form-group">
                     <label>主题色</label>

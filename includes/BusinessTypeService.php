@@ -34,21 +34,24 @@ class BusinessTypeService
     }
 
     /** @return list<string> */
-    public static function boards(): array
+    public static function boards(?PDO $pdo = null): array
     {
-        return ['三角洲', '暗区', '微契约'];
+        require_once __DIR__ . '/BoardService.php';
+        if ($pdo instanceof PDO) {
+            return BoardService::names($pdo, true);
+        }
+        try {
+            return BoardService::names(Database::getConnection(), true);
+        } catch (Throwable) {
+            return ['三角洲行动', '暗区突围', '无畏契约'];
+        }
     }
 
-    public static function normalizeBoard(mixed $raw): ?string
+    public static function normalizeBoard(mixed $raw, ?PDO $pdo = null): ?string
     {
-        $board = trim((string) ($raw ?? ''));
-        if ($board === '') {
-            return null;
-        }
-        if (!in_array($board, self::boards(), true)) {
-            throw new InvalidArgumentException('板块须为：三角洲 / 暗区 / 微契约');
-        }
-        return $board;
+        require_once __DIR__ . '/BoardService.php';
+        $conn = $pdo instanceof PDO ? $pdo : Database::getConnection();
+        return BoardService::normalize($conn, $raw);
     }
 
     public static function create(PDO $pdo, array $data): int
@@ -57,7 +60,7 @@ class BusinessTypeService
         $unitPrice = (float) ($data['unit_price'] ?? 0);
         $pricingType = trim($data['pricing_type'] ?? 'fixed');
         $remark = trim($data['remark'] ?? '');
-        $board = self::normalizeBoard($data['board'] ?? null);
+        $board = self::normalizeBoard($data['board'] ?? null, $pdo);
 
         if ($name === '') {
             throw new InvalidArgumentException('业务名称不能为空');
@@ -95,7 +98,7 @@ class BusinessTypeService
         $pricingType = trim($data['pricing_type'] ?? 'fixed');
         $remark = trim($data['remark'] ?? '');
         $status = isset($data['status']) ? (int) $data['status'] : 1;
-        $board = self::normalizeBoard($data['board'] ?? null);
+        $board = self::normalizeBoard($data['board'] ?? null, $pdo);
 
         if ($name === '') {
             throw new InvalidArgumentException('业务名称不能为空');

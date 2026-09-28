@@ -64,7 +64,7 @@ class UserService
     }
 
     /**
-     * 报单「附加打手」搜索：按昵称/用户名/ID 匹配已启用账号（不限 legacy 必须是 STAFF）。
+     * 报单「附加打手」搜索：仅打手向账号（legacy STAFF 或 RBAC 含 STAFF），绝不含顾客 CLIENT。
      * 不搜 examiner，避免一个字乱命中考核官字段。
      *
      * @return list<array<string,mixed>>
@@ -82,11 +82,27 @@ class UserService
         $prefix = $keyword . '%';
         $excludeSql = $excludeUserId > 0 ? ' AND u.id != ?' : '';
 
-        // 精确昵称/用户名优先，再前缀，再模糊；legacy STAFF 排前面
-        $sql = "SELECT u.*
+        require_once __DIR__ . '/PermissionService.php';
+        $rbac = PermissionService::isRbacReady($pdo);
+
+        // 必须是打手向，排除顾客
+        $staffFilter = $rbac
+            ? "AND u.role != 'CLIENT'
+               AND (
+                 u.role = 'STAFF'
+                 OR EXISTS (
+                   SELECT 1 FROM user_roles ur
+                   JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL AND r.status = 1
+                   WHERE ur.user_id = u.id AND r.code = 'STAFF'
+                 )
+               )"
+            : "AND u.role = 'STAFF'";
+
+        $sql = "SELECT DISTINCT u.*
                 FROM users u
                 WHERE u.deleted_at IS NULL
                   AND u.status = {$active}
+                  {$staffFilter}
                   AND (u.username LIKE ? OR u.nickname LIKE ? OR CAST(u.id AS CHAR) = ?)
                   {$excludeSql}
                 ORDER BY
@@ -95,7 +111,6 @@ class UserService
                     WHEN u.username LIKE ? OR u.nickname LIKE ? THEN 1
                     ELSE 2
                   END,
-                  CASE WHEN u.role = 'STAFF' THEN 0 ELSE 1 END,
                   u.id DESC
                 LIMIT ?";
 
@@ -113,9 +128,9 @@ class UserService
             $stmt->execute();
             return $stmt->fetchAll();
         } catch (PDOException) {
-            // 无 deleted_at 的旧库
             $sql2 = "SELECT u.* FROM users u
                      WHERE u.status = {$active}
+                       AND u.role = 'STAFF'
                        AND (u.username LIKE ? OR u.nickname LIKE ? OR CAST(u.id AS CHAR) = ?)
                        " . ($excludeUserId > 0 ? ' AND u.id != ?' : '') . "
                      ORDER BY u.id DESC LIMIT {$limit}";
@@ -126,6 +141,44 @@ class UserService
             }
             $stmt->execute($p);
             return $stmt->fetchAll();
+        }
+    }
+
+    /** 派单客服候选：仅客服角色（不含考官/打手） */
+    public static function listDispatcherCandidates(PDO $pdo): array
+    {
+        $active = Auth::STATUS_ACTIVE;
+        require_once __DIR__ . '/PermissionService.php';
+        if (PermissionService::isRbacReady($pdo)) {
+            try {
+                return $pdo->query(
+                    "SELECT DISTINCT u.id, u.username, u.nickname, u.role
+                     FROM users u
+                     LEFT JOIN user_roles ur ON ur.user_id = u.id
+                     LEFT JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL AND r.status = 1
+                     WHERE u.deleted_at IS NULL AND u.status = {$active}
+                       AND u.role != 'CLIENT'
+                       AND (u.role = 'CUSTOMER_SERVICE' OR r.code = 'CUSTOMER_SERVICE')
+                     ORDER BY u.nickname ASC, u.id ASC
+                     LIMIT 500"
+                )->fetchAll();
+            } catch (PDOException) {
+                // fall through
+            }
+        }
+        try {
+            return $pdo->query(
+                "SELECT id, username, nickname, role FROM users
+                 WHERE deleted_at IS NULL AND status = {$active}
+                   AND role = 'CUSTOMER_SERVICE'
+                 ORDER BY nickname ASC, id ASC"
+            )->fetchAll();
+        } catch (PDOException) {
+            return $pdo->query(
+                "SELECT id, username, nickname, role FROM users
+                 WHERE status = {$active} AND role = 'CUSTOMER_SERVICE'
+                 ORDER BY nickname ASC, id ASC"
+            )->fetchAll();
         }
     }
 
@@ -273,6 +326,12 @@ class UserService
         try {
             $pdo->prepare('UPDATE users SET accept_client_orders = 0 WHERE id = ?')->execute([$id]);
         } catch (PDOException) {
+        }
+        require_once __DIR__ . '/CustomerService.php';
+        try {
+            CustomerService::ensureForClientUser($pdo, $id);
+        } catch (Throwable) {
+            // 关联客户失败不阻断注册
         }
         return $id;
     }
@@ -578,6 +637,8 @@ class UserService
             }
         }
         self::updateUser($pdo, $id, $user['role'], $data);
+        // 员工也可填入职/考核官/押金（不必勾打手）
+        self::updateStaffProfile($pdo, $id, $data, null, (string) $user['username']);
 
         require_once __DIR__ . '/PermissionService.php';
         require_once __DIR__ . '/RoleService.php';

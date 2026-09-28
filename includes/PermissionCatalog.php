@@ -57,8 +57,9 @@ class PermissionCatalog
         'rates'          => ['rate.manage'],
         'settings'       => ['settings.manage'],
         'honors'         => ['honor.view', 'honor.manage'],
-        'client_orders'  => ['order.view', 'order.review', 'customer.view'],
+        // 顾客订单/会员：勿用 order.view 打通（打手默认有 order.view 会误进后台）
+        'client_orders'  => ['order.review', 'customer.manage'],
         'fines'          => ['staff.manage', 'user.manage'],
-        'membership'     => ['customer.manage', 'settings.manage'],
+        'membership'     => ['customer.manage'],
     ];
 }

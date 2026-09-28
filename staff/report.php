@@ -24,6 +24,12 @@ if (!empty($_POST['extra_fee_ids']) && is_array($_POST['extra_fee_ids'])) {
     $postedExtraFeeIds = array_map('intval', $_POST['extra_fee_ids']);
 }
 $coStaffEnabled = OrderService::hasCoStaffColumn($pdo);
+$dispatcherEnabled = OrderService::hasDispatcherColumn($pdo);
+$dispatchers = [];
+if ($dispatcherEnabled) {
+    require_once __DIR__ . '/../includes/UserService.php';
+    $dispatchers = UserService::listDispatcherCandidates($pdo);
+}
 $rates = SettlementService::rates();
 $rateAPct = (float) $rates['rate_a'] * 100;
 $rateDuoPct = (float) $rates['rate_b'] * 100;
@@ -89,6 +95,21 @@ require __DIR__ . '/partials/head.php';
             <div class="form-section">
                 <div class="form-section-title">报单信息</div>
 
+                <?php if ($dispatcherEnabled): ?>
+                <div class="form-group">
+                    <label for="dispatcherId">接单归属 / 派单客服 <span class="required-mark">*</span></label>
+                    <select name="dispatcher_id" id="dispatcherId" class="form-control" required>
+                        <option value="">请选择派这单的客服</option>
+                        <?php foreach ($dispatchers as $d): ?>
+                            <option value="<?= (int) $d['id'] ?>" <?= ((int) ($_POST['dispatcher_id'] ?? 0) === (int) $d['id']) ? 'selected' : '' ?>>
+                                <?= e(($d['nickname'] ?: $d['username']) . ' (@' . $d['username'] . ')') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="order-no-hint">选实际派单的客服账号，方便查是谁派的。</p>
+                </div>
+                <?php endif; ?>
+
                 <?php if ($coStaffEnabled): ?>
                 <div class="form-group">
                     <label>接单方式 <span class="required-mark">*</span></label>
@@ -130,7 +151,7 @@ require __DIR__ . '/partials/head.php';
                             <button type="button" class="co-staff-clear" id="coStaffClear">清除</button>
                         </div>
                     </div>
-                    <p class="order-no-hint">先点左边输入框打字，再点「搜索」，最后点选搭档。可搜任意已启用账号的昵称/用户名（不限必须勾打手角色）。</p>
+                    <p class="order-no-hint">先点左边输入框打字，再点「搜索」，最后点选搭档。只显示打手账号，不能选顾客。</p>
                 </div>
                 <?php else: ?>
                 <input type="hidden" name="crew_mode" value="solo">

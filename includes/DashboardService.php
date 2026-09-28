@@ -87,10 +87,107 @@ class DashboardService
     private static function withFinanceExtras(PDO $pdo, array $stats): array
     {
         $stats['deposit_total'] = self::depositTotal($pdo);
+        // 订单原价合计（单钱）
+        $stats['order_amount_total'] = self::orderAmountTotal($pdo);
+        // 总流水 = 实付
         $stats['revenue_total'] = self::revenueTotal($pdo);
         $stats['withdraw_paid_total'] = self::withdrawPaidTotal($pdo);
-        $stats['net_profit'] = round($stats['revenue_total'] - $stats['withdraw_paid_total'], 2);
+        // 正在处理的提现（已申请未放款）
+        $stats['pending_withdraw_amount'] = self::withdrawPendingTotal($pdo);
+        // 打手结算合计（已通过报单应得）
+        $stats['staff_pay_total'] = self::staffPayTotal($pdo);
+        $stats['staff_fines_total'] = self::staffFinesTotal($pdo);
+        // 未发起提现 = 结算 − 已放款 − 处理中 − 罚款
+        $unrequested = round(
+            $stats['staff_pay_total']
+            - $stats['withdraw_paid_total']
+            - $stats['pending_withdraw_amount']
+            - $stats['staff_fines_total'],
+            2
+        );
+        if ($unrequested < 0) {
+            $unrequested = 0.0;
+        }
+        $stats['unrequested_withdraw'] = $unrequested;
+        // 待提现 = 处理中 + 未发起（还在系统里的打手款）
+        $stats['awaiting_withdraw_total'] = round(
+            $stats['pending_withdraw_amount'] + $stats['unrequested_withdraw'],
+            2
+        );
+        // 打手款总量口径：已放款 + 处理中 + 未发起（≈结算−罚款）
+        $stats['staff_money_total'] = round(
+            $stats['withdraw_paid_total']
+            + $stats['pending_withdraw_amount']
+            + $stats['unrequested_withdraw'],
+            2
+        );
+        // 净利润 = 流水 − 打手结算
+        $stats['net_profit'] = round($stats['revenue_total'] - $stats['staff_pay_total'], 2);
         return $stats;
+    }
+
+    /** 正在处理的提现金额（PENDING） */
+    public static function withdrawPendingTotal(PDO $pdo): float
+    {
+        return (float) $pdo->query(
+            "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'PENDING'"
+        )->fetchColumn();
+    }
+
+    public static function staffFinesTotal(PDO $pdo): float
+    {
+        try {
+            return (float) $pdo->query(
+                "SELECT COALESCE(SUM(amount), 0) FROM staff_fines WHERE status = 'ACTIVE'"
+            )->fetchColumn();
+        } catch (PDOException) {
+            try {
+                return (float) $pdo->query(
+                    'SELECT COALESCE(SUM(amount), 0) FROM staff_fines'
+                )->fetchColumn();
+            } catch (PDOException) {
+                return 0.0;
+            }
+        }
+    }
+
+    /** 已通过订单原价合计（单钱，不含优惠） */
+    public static function orderAmountTotal(PDO $pdo): float
+    {
+        $alive = self::alive();
+        try {
+            return (float) $pdo->query(
+                "SELECT COALESCE(SUM(amount), 0)
+                 FROM orders WHERE status IN ('APPROVED','SETTLED') AND {$alive}"
+            )->fetchColumn();
+        } catch (PDOException) {
+            return 0.0;
+        }
+    }
+
+    /** 已通过报单的打手结算合计（含未提现；含顾客单完成结算） */
+    public static function staffPayTotal(PDO $pdo): float
+    {
+        $alive = self::alive();
+        $report = 0.0;
+        try {
+            $report = (float) $pdo->query(
+                "SELECT COALESCE(SUM(COALESCE(staff_amount, 0)), 0)
+                 FROM orders WHERE status IN ('APPROVED','SETTLED') AND {$alive}"
+            )->fetchColumn();
+        } catch (PDOException) {
+            $report = 0.0;
+        }
+        $client = 0.0;
+        try {
+            $client = (float) $pdo->query(
+                "SELECT COALESCE(SUM(COALESCE(staff_amount, 0)), 0)
+                 FROM client_orders WHERE status = 'DONE'"
+            )->fetchColumn();
+        } catch (PDOException) {
+            $client = 0.0;
+        }
+        return round($report + $client, 2);
     }
 
     public static function depositTotal(PDO $pdo): float

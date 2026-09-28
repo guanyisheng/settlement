@@ -97,6 +97,86 @@ class MembershipService
         $pdo->prepare(
             'UPDATE users SET membership_expire_at = ?, growth_points = IFNULL(growth_points,0) + ? WHERE id = ?'
         )->execute([$newExp, $bonus, $userId]);
+        require_once __DIR__ . '/CustomerService.php';
+        try {
+            CustomerService::ensureForClientUser($pdo, $userId);
+        } catch (Throwable) {
+        }
+    }
+
+    /** 客服编辑门户顾客：昵称/成长值/到期/状态，可选重置密码 */
+    public static function updateClient(PDO $pdo, int $userId, array $data): void
+    {
+        if ($userId <= 0) {
+            throw new InvalidArgumentException('无效顾客');
+        }
+        $stmt = $pdo->prepare("SELECT id, username FROM users WHERE id = ? AND role = 'CLIENT'");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+        if (!$user) {
+            throw new RuntimeException('顾客账号不存在');
+        }
+
+        $nickname = trim((string) ($data['nickname'] ?? ''));
+        if ($nickname === '') {
+            $nickname = (string) $user['username'];
+        }
+        $growth = max(0, (int) ($data['growth_points'] ?? 0));
+        $status = isset($data['status']) ? ((int) $data['status'] ? 1 : 0) : 1;
+        $expireRaw = trim((string) ($data['membership_expire_at'] ?? ''));
+        $expire = null;
+        if ($expireRaw !== '') {
+            $ts = strtotime($expireRaw);
+            if ($ts === false) {
+                throw new InvalidArgumentException('会员到期时间格式不对');
+            }
+            $expire = date('Y-m-d H:i:s', $ts);
+        }
+
+        try {
+            $pdo->prepare(
+                'UPDATE users SET nickname = ?, growth_points = ?, membership_expire_at = ?, status = ? WHERE id = ?'
+            )->execute([$nickname, $growth, $expire, $status, $userId]);
+        } catch (PDOException $e) {
+            if (str_contains($e->getMessage(), 'growth_points') || str_contains($e->getMessage(), 'Unknown column')) {
+                $pdo->prepare('UPDATE users SET nickname = ?, status = ? WHERE id = ?')
+                    ->execute([$nickname, $status, $userId]);
+            } else {
+                throw $e;
+            }
+        }
+
+        $newPass = trim((string) ($data['new_password'] ?? ''));
+        if ($newPass !== '') {
+            if (strlen($newPass) < 6) {
+                throw new InvalidArgumentException('新密码至少6位');
+            }
+            $pdo->prepare('UPDATE users SET password = ? WHERE id = ?')
+                ->execute([password_hash($newPass, PASSWORD_DEFAULT), $userId]);
+        }
+
+        require_once __DIR__ . '/CustomerService.php';
+        try {
+            CustomerService::ensureForClientUser($pdo, $userId);
+            CustomerService::syncFromClientUser($pdo, $userId, $nickname, $status);
+        } catch (Throwable) {
+        }
+    }
+
+    /** 补齐历史门户顾客 → 报单客户 */
+    public static function backfillCustomerLinks(PDO $pdo): int
+    {
+        require_once __DIR__ . '/CustomerService.php';
+        if (!CustomerService::hasUserIdColumn($pdo)) {
+            return 0;
+        }
+        $rows = $pdo->query("SELECT id FROM users WHERE role = 'CLIENT'")->fetchAll();
+        $n = 0;
+        foreach ($rows as $r) {
+            CustomerService::ensureForClientUser($pdo, (int) $r['id']);
+            $n++;
+        }
+        return $n;
     }
 
     public static function saveTier(PDO $pdo, array $data, ?int $id = null): void
