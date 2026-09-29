@@ -12,7 +12,7 @@ Auth::requirePage('roles');
 
 $pdo = Database::getConnection();
 if (!PermissionService::isRbacReady($pdo)) {
-    flash('error', '请先执行 database/migrate_rbac_v2.sql');
+    flash('error', '请先执行 database/一键注入_全部更新.sql');
     redirect('/admin/index.php');
 }
 

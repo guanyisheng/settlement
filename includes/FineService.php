@@ -30,7 +30,7 @@ class FineService
     public static function create(PDO $pdo, int $staffId, float $amount, string $reason, int $by): void
     {
         if (!self::isReady($pdo)) {
-            throw new RuntimeException('请先执行 database/migrate_customer_portal.sql');
+            throw new RuntimeException('请先执行 database/一键注入_全部更新.sql');
         }
         $reason = trim($reason);
         if ($staffId <= 0) {
@@ -57,10 +57,10 @@ class FineService
     public static function revoke(PDO $pdo, int $fineId, int $by, string $note = ''): void
     {
         if (!self::isReady($pdo)) {
-            throw new RuntimeException('请先执行 database/migrate_customer_portal.sql');
+            throw new RuntimeException('请先执行 database/一键注入_全部更新.sql');
         }
         if (!self::hasStatusColumn($pdo)) {
-            throw new RuntimeException('请重新执行 database/migrate_customer_portal.sql 以启用撤销罚款');
+            throw new RuntimeException('请重新执行 database/一键注入_全部更新.sql 以启用撤销罚款');
         }
         if ($fineId <= 0) {
             throw new InvalidArgumentException('罚款无效');

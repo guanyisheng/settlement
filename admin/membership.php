@@ -59,7 +59,7 @@ require __DIR__ . '/partials/header.php';
 <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 <?php if (!MembershipService::isReady($pdo)): ?>
-<div class="alert alert-error">请先执行 database/migrate_customer_portal.sql</div>
+<div class="alert alert-error">请先执行 database/一键注入_全部更新.sql</div>
 <?php else: ?>
 
 <div class="card">
@@ -195,7 +195,7 @@ require __DIR__ . '/partials/header.php';
         <p style="padding:12px 16px 0;color:var(--text-muted);font-size:13px;margin:0">
             改昵称/状态会同步到报单用的「客户管理」。预存余额请到
             <a href="/admin/customers.php">客户管理</a> 改。需先执行
-            <code>database/migrate_customer_unify.sql</code>。
+            <code>database/一键注入_全部更新.sql</code>。
         </p>
         <div class="table-wrap">
             <table>

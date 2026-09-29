@@ -45,7 +45,7 @@ require __DIR__ . '/partials/header.php';
     改名称/状态会同步门户昵称。成长值、会员卡请到
     <a href="/admin/membership.php">会员管理</a>。
     <?php if (!CustomerService::hasUserIdColumn($pdo)): ?>
-        <br>请先执行 <code>database/migrate_customer_unify.sql</code> 再点会员页「同步到客户管理」。
+        <br>请先执行 <code>database/一键注入_全部更新.sql</code> 再点会员页「同步到客户管理」。
     <?php endif; ?>
 </div>
 

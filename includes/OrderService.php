@@ -266,7 +266,7 @@ class OrderService
             if (!str_contains($e->getMessage(), 'rate_a') && !str_contains($e->getMessage(), 'Unknown column')) {
                 if (str_contains($e->getMessage(), 'Duplicate') || str_contains($e->getMessage(), '1062')) {
                     throw new InvalidArgumentException(
-                        '该微信订单编号仍被占用（若旧单已拒绝，请管理员执行 database/migrate_wechat_order_no_allow_rereport.sql 后重试）'
+                        '该微信订单编号仍被占用（若旧单已拒绝，请管理员执行 database/一键注入_全部更新.sql 后重试）'
                     );
                 }
                 throw $e;

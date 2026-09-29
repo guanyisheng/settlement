@@ -33,6 +33,14 @@ class BusinessTypeService
         return $stmt->fetchAll();
     }
 
+    public static function getById(PDO $pdo, int $id): ?array
+    {
+        $stmt = $pdo->prepare('SELECT * FROM business_types WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
     /** @return list<string> */
     public static function boards(?PDO $pdo = null): array
     {

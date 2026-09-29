@@ -126,7 +126,7 @@ class PermissionService
         if (self::isOnlyStaffPortal($pdo, $userId)) {
             return false;
         }
-        // 有任一真正后台权限即可进后台（不含打手自助：honor.manage / report 等）
+        // 有任一真正后台权限即可进后台（不含打手自助；dashboard.view 单独不足以让打手进后台）
         $adminPerms = [
             'order.review', 'withdrawal.process', 'registration.review',
             'staff.manage', 'staff.view', 'customer.view', 'customer.manage',
@@ -134,9 +134,34 @@ class PermissionService
             'user.view', 'user.manage', 'role.view', 'role.manage',
             'rate.manage', 'settings.manage', 'photo.download',
             'order.delete', 'user.delete', 'permission.manage',
+            'activity.manage',
         ];
-        return self::userCanAny($pdo, $userId, $adminPerms)
-            || self::userCan($pdo, $userId, 'dashboard.view');
+        return self::userCanAny($pdo, $userId, $adminPerms);
+    }
+
+    /**
+     * 运行时清掉非老板角色上的 dashboard.view（历史误配，避免打手/客服看见财务看板）
+     */
+    public static function revokeNonBossDashboardView(PDO $pdo): void
+    {
+        if (!self::isRbacReady($pdo)) {
+            return;
+        }
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $done = true;
+        try {
+            $pdo->exec(
+                "DELETE rp FROM role_permissions rp
+                 INNER JOIN roles r ON r.id = rp.role_id
+                 INNER JOIN permissions p ON p.id = rp.permission_id
+                 WHERE p.code = 'dashboard.view'
+                   AND r.code IN ('STAFF', 'CUSTOMER_SERVICE', 'EXAMINER')"
+            );
+        } catch (Throwable) {
+        }
     }
 
     private static function isOnlyStaffPortal(PDO $pdo, int $userId): bool

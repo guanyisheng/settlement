@@ -22,6 +22,9 @@ $pageTitle = $pageTitle ?? brandName();
             <a href="/customer/orders.php" class="nav-item <?= $currentPage === 'orders' ? 'active' : '' ?>">
                 <?= svgIcon('orders') ?><span>我的订单</span>
             </a>
+            <a href="/customer/activity.php" class="nav-item <?= $currentPage === 'activity' ? 'active' : '' ?>">
+                <?= svgIcon('dashboard') ?><span>活动抽奖</span>
+            </a>
             <a href="/customer/profile.php" class="nav-item <?= $currentPage === 'profile' ? 'active' : '' ?>">
                 <?= svgIcon('customers') ?><span>个人中心</span>
             </a>

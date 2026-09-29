@@ -37,7 +37,7 @@ require __DIR__ . '/partials/head.php';
         <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
         <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
         <?php if (!ClientOrderService::isReady($pdo)): ?>
-            <div class="alert alert-error">请先执行 migrate_customer_portal.sql</div>
+            <div class="alert alert-error">请先执行 database/一键注入_全部更新.sql</div>
         <?php elseif ($orders === []): ?>
             <div class="empty-state"><p>暂无顾客单（抢单池或指定给你的单）</p></div>
         <?php else: ?>

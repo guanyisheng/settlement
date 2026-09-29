@@ -60,7 +60,7 @@ class ExtraFeeService
     public static function createItem(PDO $pdo, array $data): int
     {
         if (!self::isReady($pdo)) {
-            throw new RuntimeException('请先执行 database/migrate_extra_fee_items.sql');
+            throw new RuntimeException('请先执行 database/一键注入_全部更新.sql');
         }
         [$name, $type, $rate, $fixed, $sort, $remark] = self::normalizeWritePayload($data);
         try {
@@ -71,7 +71,7 @@ class ExtraFeeService
             $stmt->execute([$name, $type, $rate, $fixed, $sort, $remark]);
         } catch (PDOException) {
             if ($type === 'fixed') {
-                throw new RuntimeException('请先执行 database/migrate_extra_fee_fixed_amount.sql 后再添加「直接加钱」项目');
+                throw new RuntimeException('请先执行 database/一键注入_全部更新.sql 后再添加「直接加钱」项目');
             }
             $stmt = $pdo->prepare(
                 'INSERT INTO extra_fee_items (name, rate, sort_order, status, remark) VALUES (?, ?, ?, 1, ?)'
@@ -84,7 +84,7 @@ class ExtraFeeService
     public static function updateItem(PDO $pdo, int $id, array $data): void
     {
         if (!self::isReady($pdo)) {
-            throw new RuntimeException('请先执行 database/migrate_extra_fee_items.sql');
+            throw new RuntimeException('请先执行 database/一键注入_全部更新.sql');
         }
         if ($id <= 0) {
             throw new InvalidArgumentException('项目无效');
@@ -98,7 +98,7 @@ class ExtraFeeService
             $stmt->execute([$name, $type, $rate, $fixed, $sort, $status, $remark, $id]);
         } catch (PDOException) {
             if ($type === 'fixed') {
-                throw new RuntimeException('请先执行 database/migrate_extra_fee_fixed_amount.sql 后再改为「直接加钱」');
+                throw new RuntimeException('请先执行 database/一键注入_全部更新.sql 后再改为「直接加钱」');
             }
             $stmt = $pdo->prepare(
                 'UPDATE extra_fee_items SET name = ?, rate = ?, sort_order = ?, status = ?, remark = ? WHERE id = ?'

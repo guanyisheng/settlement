@@ -10,9 +10,16 @@ $adminSessionUser = Auth::user();
 $user = $adminSessionUser;
 $isBoss = Auth::isBoss();
 
+try {
+    require_once __DIR__ . '/../../includes/PermissionService.php';
+    require_once __DIR__ . '/../../includes/Database.php';
+    PermissionService::revokeNonBossDashboardView(Database::getConnection());
+} catch (Throwable) {
+}
+
 $navSettlePages = ['orders', 'withdrawals', 'client_orders', 'fines'];
 $navUserPages = ['registrations', 'users', 'staff', 'employees', 'roles', 'customers', 'membership'];
-$navBizPages = ['business_types'];
+$navBizPages = ['business_types', 'activity'];
 $navSettleOpen = in_array($currentPage, $navSettlePages, true);
 $navUserOpen = in_array($currentPage, $navUserPages, true);
 $navBizOpen = in_array($currentPage, $navBizPages, true);
@@ -28,18 +35,20 @@ $canUsers = Auth::canAccessPage('registrations')
     || Auth::canAccessPage('roles')
     || Auth::canAccessPage('customers')
     || Auth::canAccessPage('membership');
-$canBiz = Auth::canAccessPage('business_types');
+$canBiz = Auth::canAccessPage('business_types') || Auth::canAccessPage('activity');
 ?>
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-asset-build="<?= e(assetBuildId()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="screen-orientation" content="portrait">
     <meta name="theme-color" content="<?= brandThemeColor() ?>">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <link rel="icon" href="<?= brandLogo() ?>" type="image/png">
     <title><?= e(brandTitle($pageTitle)) ?></title>
-    <link rel="stylesheet" href="/admin/assets/css/admin.css">
+    <link rel="stylesheet" href="<?= e(adminAssetUrl('/admin/assets/css/admin.css')) ?>">
+    <link rel="stylesheet" href="<?= e(adminAssetUrl('/admin/assets/css/finance-dash.css')) ?>">
     <style>
       @media screen and (orientation: landscape) and (max-width: 900px) {
         body::after {
@@ -61,7 +70,12 @@ $canBiz = Auth::canAccessPage('business_types');
         </div>
         <nav class="sidebar-nav">
             <?php if (Auth::canAccessPage('dashboard')): ?>
-            <a href="/admin/index.php" class="nav-item <?= $currentPage === 'dashboard' ? 'active' : '' ?>">
+            <?php
+                $dashHome = (Auth::isBoss() && (($_COOKIE['admin_dash'] ?? '') === 'v2'))
+                    ? '/admin/index_v2.php'
+                    : '/admin/index.php';
+            ?>
+            <a href="<?= e($dashHome) ?>" class="nav-item <?= $currentPage === 'dashboard' ? 'active' : '' ?>">
                 <?= svgIcon('dashboard') ?><span>工作台</span>
             </a>
             <?php endif; ?>
@@ -150,12 +164,19 @@ $canBiz = Auth::canAccessPage('business_types');
                     <span class="nav-group-caret" aria-hidden="true">▾</span>
                 </button>
                 <div class="nav-group-body">
+                    <?php if (Auth::canAccessPage('business_types')): ?>
                     <a href="/admin/business_types.php" class="nav-item <?= $currentPage === 'business_types' ? 'active' : '' ?>">
                         <?= svgIcon('business_types') ?><span>业务类型</span>
                     </a>
                     <a href="/admin/business_types.php#extra-fees" class="nav-item">
                         <?= svgIcon('business_types') ?><span>额外收费</span>
                     </a>
+                    <?php endif; ?>
+                    <?php if (Auth::canAccessPage('activity')): ?>
+                    <a href="/admin/activity.php" class="nav-item <?= $currentPage === 'activity' ? 'active' : '' ?>">
+                        <?= svgIcon('dashboard') ?><span>活动管理</span>
+                    </a>
+                    <?php endif; ?>
                 </div>
             </div>
             <?php endif; ?>
@@ -178,6 +199,17 @@ $canBiz = Auth::canAccessPage('business_types');
             <div class="topbar-title"><?= e($pageTitle) ?></div>
             <div class="topbar-user">
                 <span>登录：<?= e($user['nickname'] ?? '') ?> (<?= e(Auth::roleDisplay()) ?>)</span>
+                <?php if (Auth::isBoss() && Auth::canAccessPage('dashboard')): ?>
+                    <?php
+                    $onV2 = (($adminDashVersion ?? '') === 'v2')
+                        || (($currentPage ?? '') === 'dashboard' && str_contains((string) ($_SERVER['SCRIPT_NAME'] ?? ''), 'index_v2'));
+                    ?>
+                    <?php if ($onV2): ?>
+                        <a href="/admin/switch_dash.php?v=classic" class="topbar-link topbar-switch"><span>切换到旧版</span></a>
+                    <?php else: ?>
+                        <a href="/admin/switch_dash.php?v=v2" class="topbar-link topbar-switch"><span>切换到新版</span></a>
+                    <?php endif; ?>
+                <?php endif; ?>
                 <a href="/customer/index.php" class="topbar-link"><span>前台</span></a>
                 <?php if (Auth::needsPortalChoice()): ?>
                 <a href="/choose_portal.php" class="topbar-link"><span>切换入口</span></a>

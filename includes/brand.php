@@ -43,6 +43,43 @@ function brandTitle(string $page = ''): string
 /** 系统版本号（可在后台系统设置修改） */
 function appVersion(): string
 {
-    $v = trim(SettingsService::get('app_version', '3.0.0-beta'));
-    return $v !== '' ? $v : '3.0.0-beta';
+    $v = trim(SettingsService::get('app_version', '3.0.1-finance'));
+    return $v !== '' ? $v : '3.0.1-finance';
+}
+
+/**
+ * 静态资源构建号：版本 + 关键 CSS/JS 文件时间，变化即强制浏览器拉新缓存。
+ */
+function assetBuildId(): string
+{
+    static $build = null;
+    if ($build !== null) {
+        return $build;
+    }
+    $root = dirname(__DIR__);
+    $times = [0];
+    foreach ([
+        $root . '/admin/assets/css/admin.css',
+        $root . '/admin/assets/css/finance-dash.css',
+        $root . '/admin/assets/js/img-preview.js',
+        $root . '/admin/assets/js/asset-refresh.js',
+        $root . '/admin/assets/js/ajax-nav.js',
+        $root . '/customer/assets/css/app.css',
+        $root . '/customer/assets/css/activity-h5.css',
+        $root . '/customer/assets/js/lottery-wheel.js',
+    ] as $path) {
+        if (is_file($path)) {
+            $times[] = (int) filemtime($path);
+        }
+    }
+    $build = appVersion() . '.' . max($times);
+    return $build;
+}
+
+/** 带防缓存参数的后台静态资源 URL */
+function adminAssetUrl(string $path): string
+{
+    $path = '/' . ltrim($path, '/');
+    $sep = str_contains($path, '?') ? '&' : '?';
+    return $path . $sep . 'v=' . rawurlencode(assetBuildId());
 }

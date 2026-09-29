@@ -37,6 +37,7 @@ class PermissionCatalog
         'rate.manage',
         'settings.manage',
         'password.change',
+        'activity.manage',
     ];
 
     /** 菜单项 → 所需任一权限 */
@@ -61,5 +62,6 @@ class PermissionCatalog
         'client_orders'  => ['order.review', 'customer.manage'],
         'fines'          => ['staff.manage', 'user.manage'],
         'membership'     => ['customer.manage'],
+        'activity'       => ['activity.manage'],
     ];
 }

@@ -11,7 +11,7 @@ require_once __DIR__ . '/../includes/UserService.php';
 require_once __DIR__ . '/../includes/BoardService.php';
 require_once __DIR__ . '/../includes/helpers.php';
 
-Auth::requirePage('dashboard');
+Auth::requireBoss();
 
 $pdo = Database::getConnection();
 $stats = DashboardService::getStats($pdo);
@@ -26,6 +26,7 @@ $recentWithdrawals = array_slice($recentWithdrawals, 0, 5);
 
 $currentPage = 'dashboard';
 $pageTitle = '工作台';
+$adminDashVersion = 'classic';
 require __DIR__ . '/partials/header.php';
 ?>
 
@@ -68,18 +69,18 @@ require __DIR__ . '/partials/header.php';
     <div class="stat-card">
         <div class="label">处理中提现</div>
         <div class="value warning"><?= formatMoney($stats['pending_withdraw_amount'] ?? 0) ?></div>
-        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">已申请、尚未放款</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">已申请未放款 · 仅启用账号</p>
         <a href="/admin/withdrawals.php?status=PENDING" class="btn btn-sm btn-danger" style="margin-top:8px">去处理提现</a>
     </div>
     <div class="stat-card">
         <div class="label">未发起提现</div>
         <div class="value warning"><?= formatMoney($stats['unrequested_withdraw'] ?? 0) ?></div>
-        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">结算 − 已放款 − 处理中 − 罚款</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">启用账号可提余额；停用不计</p>
     </div>
     <div class="stat-card">
         <div class="label">待提现总金额</div>
         <div class="value danger"><?= formatMoney($stats['awaiting_withdraw_total'] ?? 0) ?></div>
-        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">处理中 + 未发起（还在系统里的打手款）</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">处理中 + 未发起（停用账号不参加）</p>
     </div>
     <div class="stat-card">
         <div class="label">打手款总量</div>
@@ -113,7 +114,7 @@ require __DIR__ . '/partials/header.php';
     </div>
     <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px">
         <?php if ($boardNames === []): ?>
-            <span style="color:var(--text-muted);font-size:13px">暂无板块，请执行 migrate_settlement_boards.sql 或去自定义</span>
+            <span style="color:var(--text-muted);font-size:13px">暂无板块，请执行 一键注入_全部更新.sql 或去自定义</span>
         <?php else: ?>
             <?php foreach ($boardNames as $board): ?>
                 <a class="btn btn-primary" href="/admin/board_settlement.php?board=<?= rawurlencode($board) ?>"><?= e($board) ?>结算</a>

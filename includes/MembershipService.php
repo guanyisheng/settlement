@@ -69,7 +69,7 @@ class MembershipService
     public static function grantCard(PDO $pdo, int $userId, int $cardId): void
     {
         if (!self::isReady($pdo)) {
-            throw new RuntimeException('请先执行 database/migrate_customer_portal.sql');
+            throw new RuntimeException('请先执行 database/一键注入_全部更新.sql');
         }
         $stmt = $pdo->prepare('SELECT * FROM membership_cards WHERE id = ? AND status = 1');
         $stmt->execute([$cardId]);

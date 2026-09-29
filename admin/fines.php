@@ -54,7 +54,7 @@ require __DIR__ . '/partials/header.php';
     <div class="card-header"><h2>下发罚款</h2></div>
     <div class="card-body">
         <?php if (!FineService::isReady($pdo)): ?>
-            <div class="alert alert-error">请先执行 database/migrate_customer_portal.sql</div>
+            <div class="alert alert-error">请先执行 database/一键注入_全部更新.sql</div>
         <?php else: ?>
         <form method="post">
             <input type="hidden" name="action" value="create">

@@ -156,7 +156,7 @@ php -S localhost:8080 router.php
 ├── staff/              # 打手移动端（报单含一人/双人）
 ├── includes/           # 业务逻辑（Auth / RBAC / Order / Settlement…）
 ├── config/             # 配置（database.php / cos.php 不提交）
-├── database/           # SQL 结构与迁移
+├── database/           # schema.sql（全新安装）+ 一键注入_全部更新.sql（升级）
 ├── uploads/            # 本地存储（不提交）
 ├── scripts/            # 诊断 / 迁移脚本
 ├── 使用手册.md          # 三端操作说明（用户向）
@@ -205,40 +205,16 @@ PHP 侧建议 `upload_max_filesize` / `post_max_size` ≥ `50M`。
 
 ---
 
-## 升级到 3.0.0-beta（已有旧库）
+## 升级（已有旧库）
 
 在 phpMyAdmin **先选中业务库**再执行（不要写死 `USE settlement`，生产库名可能不同）。
 
-### 推荐
-
 1. 备份数据库  
-2. 覆盖代码到 `main` / `v3.0.0-beta`  
-3. 按需执行：
+2. 覆盖代码  
+3. 只跑一份：`database/一键注入_全部更新.sql`（可重复执行；含 RBAC、顾客端、额外收费、实付/派单、结算板块等）  
 
-| 脚本 | 说明 |
-|------|------|
-| `database/一键注入_全部更新.sql` | 一键尽量对齐新结构（可重复执行） |
-| 或 `database/本次更新_总SQL.sql` | 另一份汇总迁移 |
-
-### 3.0 相关补丁（若一键脚本未覆盖）
-
-| 脚本 | 说明 |
-|------|------|
-| `migrate_order_co_staff.sql` | 订单附加打手字段 |
-| `migrate_settlement_rate_solo.sql` | 一人接单倍率配置项 |
-| `migrate_fix_staff_like_role.sql` | 多角色打手可被搜到（修正 legacy `role`） |
-| `migrate_app_version_3_0_0_beta.sql` | 系统版本号改为 `3.0.0-beta` |
-
-### 历史迁移（按缺口补）
-
-| 脚本 | 说明 |
-|------|------|
-| `migrate_rbac_v2.sql` | RBAC、毛照多图、荣誉、倍率快照等 |
-| `migrate_pay_qr.sql` | 收款二维码 `pay_qr_key` |
-| `migrate_system_settings.sql` | 系统设置表 |
-| `reset_total_income_to_zero.sql` | **可选运维**：已通过订单结算清零（慎用，先备份） |
-
-辅助：`php scripts/migrate_rbac.php`（若环境支持）。全新安装直接 `php install.php`。
+全新安装：`php install.php`（用 `schema.sql`）。也可再跑一遍一键注入对齐增量字段。  
+CLI 辅助：`php scripts/migrate_rbac.php`（实际执行同一份一键注入）。
 
 ---
 

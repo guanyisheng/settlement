@@ -69,7 +69,7 @@ class BoardService
     public static function save(PDO $pdo, array $data, ?int $id = null): void
     {
         if (!self::isReady($pdo)) {
-            throw new RuntimeException('请先执行 database/migrate_settlement_boards.sql');
+            throw new RuntimeException('请先执行 database/一键注入_全部更新.sql');
         }
         $name = trim((string) ($data['name'] ?? ''));
         $sort = (int) ($data['sort_order'] ?? 0);

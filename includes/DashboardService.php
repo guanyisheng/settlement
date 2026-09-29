@@ -92,28 +92,14 @@ class DashboardService
         // 总流水 = 实付
         $stats['revenue_total'] = self::revenueTotal($pdo);
         $stats['withdraw_paid_total'] = self::withdrawPaidTotal($pdo);
-        // 正在处理的提现（已申请未放款）
-        $stats['pending_withdraw_amount'] = self::withdrawPendingTotal($pdo);
-        // 打手结算合计（已通过报单应得）
+        // 打手结算合计（已通过报单应得，含停用账号的历史单）
         $stats['staff_pay_total'] = self::staffPayTotal($pdo);
         $stats['staff_fines_total'] = self::staffFinesTotal($pdo);
-        // 未发起提现 = 结算 − 已放款 − 处理中 − 罚款
-        $unrequested = round(
-            $stats['staff_pay_total']
-            - $stats['withdraw_paid_total']
-            - $stats['pending_withdraw_amount']
-            - $stats['staff_fines_total'],
-            2
-        );
-        if ($unrequested < 0) {
-            $unrequested = 0.0;
-        }
-        $stats['unrequested_withdraw'] = $unrequested;
-        // 待提现 = 处理中 + 未发起（还在系统里的打手款）
-        $stats['awaiting_withdraw_total'] = round(
-            $stats['pending_withdraw_amount'] + $stats['unrequested_withdraw'],
-            2
-        );
+        // 待提现只算启用账号：停用账号的处理中、未发起都不进
+        $activeAwait = self::activeAwaitingParts($pdo);
+        $stats['pending_withdraw_amount'] = $activeAwait['pending'];
+        $stats['unrequested_withdraw'] = $activeAwait['unrequested'];
+        $stats['awaiting_withdraw_total'] = $activeAwait['awaiting'];
         // 打手款总量口径：已放款 + 处理中 + 未发起（≈结算−罚款）
         $stats['staff_money_total'] = round(
             $stats['withdraw_paid_total']
@@ -126,12 +112,128 @@ class DashboardService
         return $stats;
     }
 
-    /** 正在处理的提现金额（PENDING） */
+    /** 正在处理的提现金额（PENDING，全量） */
     public static function withdrawPendingTotal(PDO $pdo): float
     {
         return (float) $pdo->query(
             "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'PENDING'"
         )->fetchColumn();
+    }
+
+    /**
+     * 启用账号的待提现拆分：停用账号不进处理中 / 未发起 / 待提现。
+     *
+     * @return array{pending:float,unrequested:float,awaiting:float}
+     */
+    public static function activeAwaitingParts(PDO $pdo): array
+    {
+        require_once __DIR__ . '/Auth.php';
+        require_once __DIR__ . '/BalanceService.php';
+        $active = Auth::STATUS_ACTIVE;
+
+        $pending = 0.0;
+        try {
+            $pending = (float) $pdo->query(
+                "SELECT COALESCE(SUM(w.amount), 0)
+                 FROM withdrawals w
+                 JOIN users u ON u.id = w.staff_id
+                 WHERE w.status = 'PENDING'
+                   AND u.status = {$active}
+                   AND u.deleted_at IS NULL"
+            )->fetchColumn();
+        } catch (PDOException) {
+            try {
+                $pending = (float) $pdo->query(
+                    "SELECT COALESCE(SUM(w.amount), 0)
+                     FROM withdrawals w
+                     JOIN users u ON u.id = w.staff_id
+                     WHERE w.status = 'PENDING' AND u.status = {$active}"
+                )->fetchColumn();
+            } catch (PDOException) {
+                $pending = self::withdrawPendingTotal($pdo);
+            }
+        }
+
+        $unrequested = 0.0;
+        foreach (self::activeStaffIdsWithMoney($pdo) as $staffId) {
+            $avail = BalanceService::getAvailableBalance($pdo, $staffId);
+            if ($avail > 0) {
+                $unrequested += $avail;
+            }
+        }
+
+        $pending = round($pending, 2);
+        $unrequested = round($unrequested, 2);
+        return [
+            'pending' => $pending,
+            'unrequested' => $unrequested,
+            'awaiting' => round($pending + $unrequested, 2),
+        ];
+    }
+
+    /** @return list<int> */
+    private static function activeStaffIdsWithMoney(PDO $pdo): array
+    {
+        require_once __DIR__ . '/Auth.php';
+        require_once __DIR__ . '/OrderService.php';
+        $active = Auth::STATUS_ACTIVE;
+        $ids = [];
+
+        $collect = static function (string $sql) use ($pdo, &$ids): void {
+            try {
+                foreach ($pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN) as $id) {
+                    $id = (int) $id;
+                    if ($id > 0) {
+                        $ids[$id] = true;
+                    }
+                }
+            } catch (PDOException) {
+            }
+        };
+
+        $ok = "u.status = {$active} AND u.deleted_at IS NULL";
+        $okLegacy = "u.status = {$active}";
+
+        if (OrderService::hasCoStaffColumn($pdo)) {
+            $collect(
+                "SELECT DISTINCT u.id FROM users u
+                 JOIN orders o ON (o.staff_id = u.id OR o.co_staff_id = u.id)
+                 WHERE {$ok} AND o.status IN ('APPROVED','SETTLED') AND o.deleted_at IS NULL"
+            );
+            if ($ids === []) {
+                $collect(
+                    "SELECT DISTINCT u.id FROM users u
+                     JOIN orders o ON (o.staff_id = u.id OR o.co_staff_id = u.id)
+                     WHERE {$okLegacy} AND o.status IN ('APPROVED','SETTLED')"
+                );
+            }
+        } else {
+            $collect(
+                "SELECT DISTINCT u.id FROM users u
+                 JOIN orders o ON o.staff_id = u.id
+                 WHERE {$ok} AND o.status IN ('APPROVED','SETTLED') AND o.deleted_at IS NULL"
+            );
+            if ($ids === []) {
+                $collect(
+                    "SELECT DISTINCT u.id FROM users u
+                     JOIN orders o ON o.staff_id = u.id
+                     WHERE {$okLegacy} AND o.status IN ('APPROVED','SETTLED')"
+                );
+            }
+        }
+
+        $collect(
+            "SELECT DISTINCT u.id FROM users u
+             JOIN client_orders c ON c.staff_id = u.id AND c.status = 'DONE'
+             WHERE {$ok}"
+        );
+        $collect(
+            "SELECT DISTINCT u.id FROM users u
+             JOIN withdrawals w ON w.staff_id = u.id
+             WHERE {$ok}"
+        );
+
+        return array_map('intval', array_keys($ids));
     }
 
     public static function staffFinesTotal(PDO $pdo): float

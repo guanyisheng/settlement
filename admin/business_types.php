@@ -101,9 +101,7 @@ require __DIR__ . '/partials/header.php';
         <?php if (!$extraReady): ?>
             <div class="alert alert-error">
                 尚未安装额外收费表。请在业务库执行
-                <code>database/migrate_extra_fee_items.sql</code>
-                ；若已装过百分比项目、要加「直接加钱」，再执行
-                <code>database/migrate_extra_fee_fixed_amount.sql</code>。
+                <code>database/一键注入_全部更新.sql</code>
                 后刷新本页。
             </div>
         <?php else: ?>

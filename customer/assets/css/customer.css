@@ -206,3 +206,89 @@
         display: inline-flex !important;
     }
 }
+
+.activity-hero h2 {
+    margin: 0 0 8px;
+}
+.activity-block {
+    margin-bottom: 20px;
+}
+.activity-block .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.activity-points-chip {
+    font-size: 13px;
+    color: var(--text-muted);
+    background: rgba(0, 26, 114, 0.06);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 12px;
+}
+.activity-points-chip strong {
+    color: var(--primary);
+    font-size: 16px;
+}
+.activity-balance-line {
+    margin: 0 0 12px;
+    font-size: 14px;
+}
+.activity-hint {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.activity-prize-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.activity-prize-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 13px;
+    background: rgba(0, 26, 114, 0.04);
+}
+.activity-prize-tag em {
+    font-style: normal;
+    color: var(--success);
+    font-weight: 600;
+    font-size: 12px;
+}
+.activity-rank-table td {
+    vertical-align: middle;
+}
+.activity-rank-me {
+    background: rgba(0, 26, 114, 0.06);
+}
+.activity-medal {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 13px;
+    color: #fff;
+}
+.activity-medal-1 { background: #d4a017; }
+.activity-medal-2 { background: #8a9bb0; }
+.activity-medal-3 { background: #b87333; }
+.activity-mine summary.card-header {
+    list-style: none;
+}
+.activity-mine summary::-webkit-details-marker {
+    display: none;
+}
+.btn-lg {
+    padding: 12px 28px;
+    font-size: 16px;
+}

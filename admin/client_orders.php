@@ -15,6 +15,7 @@ $pdo = Database::getConnection();
 $error = flash('error');
 $success = flash('success');
 $staffList = UserService::getStaffList($pdo);
+$hasCo = ClientOrderService::isReady($pdo) && ClientOrderService::hasCoStaffColumn($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -24,8 +25,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ClientOrderService::cancel($pdo, $id, (int) Auth::id(), true);
             flash('success', '已取消');
         } elseif ($action === 'assign') {
-            ClientOrderService::assignStaff($pdo, $id, (int) ($_POST['staff_id'] ?? 0));
-            flash('success', '已派单给打手');
+            $coId = (int) ($_POST['co_staff_id'] ?? 0);
+            ClientOrderService::assignStaff($pdo, $id, (int) ($_POST['staff_id'] ?? 0), $coId);
+            flash('success', $coId > 0 ? '已派双人单' : '已派单给打手');
         } elseif ($action === 'complete') {
             ClientOrderService::completeByAdmin($pdo, $id);
             flash('success', '已完成服务，打手结算已入账');
@@ -48,11 +50,11 @@ require __DIR__ . '/partials/header.php';
 <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 <?php if (!ClientOrderService::isReady($pdo)): ?>
-<div class="alert alert-error">请先执行 database/migrate_customer_portal.sql</div>
+<div class="alert alert-error">请先执行 database/一键注入_全部更新.sql</div>
 <?php else: ?>
 
 <div class="card">
-    <div class="card-header"><h2>顾客订单（派单流程）</h2></div>
+    <div class="card-header"><h2>顾客订单（客服派单）</h2></div>
     <div class="card-body" style="padding:0">
         <div class="table-wrap">
             <table>
@@ -63,13 +65,19 @@ require __DIR__ . '/partials/header.php';
                 </thead>
                 <tbody>
                 <?php foreach ($orders as $o): ?>
+                    <?php
+                    $crewLabel = $o['staff_name'] ?: '待派';
+                    if (!empty($o['co_staff_name'])) {
+                        $crewLabel .= ' + ' . $o['co_staff_name'];
+                    }
+                    ?>
                     <tr>
                         <td><?= e($o['order_no']) ?></td>
                         <td><?= e($o['client_name']) ?></td>
                         <td><?= e($o['business_type_name']) ?></td>
                         <td style="font-size:12px"><?= e($o['game_name'] ?? '-') ?> / <?= e($o['game_client'] ?? '-') ?></td>
                         <td class="money"><?= formatMoney($o['amount']) ?></td>
-                        <td><?= e($o['staff_name'] ?: '待派') ?></td>
+                        <td><?= e($crewLabel) ?></td>
                         <td><?= e(ClientOrderService::statusLabel((string) $o['status'])) ?></td>
                         <td><?= formatDateTimeShort($o['created_at']) ?></td>
                         <td><a class="btn btn-sm btn-primary" href="?id=<?= (int) $o['id'] ?>">详情派单</a></td>
@@ -85,6 +93,8 @@ require __DIR__ . '/partials/header.php';
 <?php
 $feeLabel = ExtraFeeService::formatSnapshotLabel($view['extra_fees_json'] ?? null, isset($view['extra_fees_rate']) ? (float) $view['extra_fees_rate'] : null);
 $st = (string) $view['status'];
+$preferredId = (int) ($view['staff_id'] ?? 0);
+$coId = (int) ($view['co_staff_id'] ?? 0);
 ?>
 <div class="modal-overlay show" id="detailModal">
     <div class="modal" style="max-width:640px">
@@ -101,32 +111,67 @@ $st = (string) $view['status'];
                 <dt>游戏ID</dt><dd><?= e($view['game_id'] ?? '-') ?></dd>
                 <dt>客户端</dt><dd><?= e($view['game_client'] ?? '-') ?></dd>
                 <dt>备注</dt><dd><?= e($view['remark'] ?: '-') ?></dd>
-                <dt>当前打手</dt><dd><?= e($view['staff_name'] ?: '未派单') ?></dd>
+                <dt>顾客指定</dt>
+                <dd>
+                    <?php if ($preferredId > 0 && $st === 'WAITING' && empty($view['accepted_at'])): ?>
+                        <?= e($view['staff_name'] ?: '-') ?>
+                        <span style="color:var(--muted);font-size:12px">（偏好，可改派）</span>
+                    <?php else: ?>
+                        <?= e($view['staff_name'] ?: '未指定') ?>
+                        <?php if (!empty($view['co_staff_name'])): ?>
+                            + <?= e($view['co_staff_name']) ?>
+                            <span style="color:var(--muted);font-size:12px">（双人）</span>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </dd>
                 <?php if ($view['staff_amount'] !== null): ?>
-                <dt>打手结算</dt><dd class="money"><?= formatMoney($view['staff_amount']) ?></dd>
+                <dt>打手结算</dt>
+                <dd class="money">
+                    <?= formatMoney($view['staff_amount']) ?>
+                    <?php if ($coId > 0): ?>
+                        <span style="color:var(--muted);font-size:12px">（双人总额，两人平分）</span>
+                    <?php else: ?>
+                        <span style="color:var(--muted);font-size:12px">（单人）</span>
+                    <?php endif; ?>
+                </dd>
                 <?php endif; ?>
             </dl>
 
             <?php if (!in_array($st, ['DONE', 'CANCELLED'], true)): ?>
             <hr style="border-color:var(--border);margin:16px 0">
-            <form method="post" class="form-row" style="align-items:flex-end">
+            <form method="post" class="form-stack">
                 <input type="hidden" name="action" value="assign">
                 <input type="hidden" name="id" value="<?= (int) $view['id'] ?>">
-                <div class="form-group" style="flex:1">
-                    <label>派单给打手（群内抢到后勾选）</label>
+                <div class="form-group">
+                    <label>主打手<?= $preferredId > 0 ? '（已预填顾客指定，确认即可）' : '' ?></label>
                     <select name="staff_id" class="form-control" required>
                         <option value="">请选择</option>
                         <?php foreach ($staffList as $s): ?>
                             <?php if ((int) ($s['status'] ?? 1) !== 1) continue; ?>
-                            <option value="<?= (int) $s['id'] ?>" <?= (int) ($view['staff_id'] ?? 0) === (int) $s['id'] ? 'selected' : '' ?>>
+                            <option value="<?= (int) $s['id'] ?>" <?= $preferredId === (int) $s['id'] ? 'selected' : '' ?>>
                                 <?= e($s['nickname'] ?: $s['username']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <?php if ($hasCo): ?>
+                <div class="form-group">
+                    <label>双人附加打手（选填）</label>
+                    <select name="co_staff_id" class="form-control">
+                        <option value="0">不设 · 按单人结算</option>
+                        <?php foreach ($staffList as $s): ?>
+                            <?php if ((int) ($s['status'] ?? 1) !== 1) continue; ?>
+                            <option value="<?= (int) $s['id'] ?>" <?= $coId === (int) $s['id'] ? 'selected' : '' ?>>
+                                <?= e($s['nickname'] ?: $s['username']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div style="font-size:12px;color:var(--muted);margin-top:6px">一人按单人计算；选两人按双人结算（总额相同、两人平分）</div>
+                </div>
+                <?php endif; ?>
                 <button class="btn btn-primary" type="submit">确认派单</button>
             </form>
-            <?php if (in_array($st, ['WAITING', 'ACCEPTED', 'DOING'], true) && (int) ($view['staff_id'] ?? 0) > 0): ?>
+            <?php if (in_array($st, ['WAITING', 'ACCEPTED', 'DOING'], true) && $preferredId > 0): ?>
             <form method="post" style="margin-top:12px" onsubmit="return confirm('确认完成服务？打手将入账结算')">
                 <input type="hidden" name="action" value="complete">
                 <input type="hidden" name="id" value="<?= (int) $view['id'] ?>">

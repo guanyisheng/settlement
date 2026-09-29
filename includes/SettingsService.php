@@ -26,7 +26,7 @@ class SettingsService
             'brand_name'        => '清账系统',
             'brand_logo'        => 'https://wp-1301153132.cos.ap-chengdu.myqcloud.com/shasha/orders/logo.png',
             'brand_theme_color' => '#001A72',
-            'app_version'       => '3.0.0-beta',
+            'app_version'       => '3.0.1-finance',
             'settlement_rate_a' => (string) ($settlement['rate_a'] ?? 0.8),
             'settlement_rate_b' => (string) ($settlement['rate_b'] ?? 0.5),
             'storage_driver'    => (string) ($storage['driver'] ?? 'auto'),
@@ -36,6 +36,10 @@ class SettingsService
             'cos_bucket'        => (string) ($cos['bucket'] ?? ''),
             'cos_prefix_orders' => (string) ($cos['prefix'] ?? 'orders/'),
             'cos_prefix_staff'  => 'staff/',
+            'customer_service_link' => '',
+            'customer_banner_title' => '所有订单都附赠活动福利',
+            'customer_banner_desc' => '登录下单 · 积分抽奖等你来',
+            'customer_order_rules' => "1. 禁止未成年人下单。\n2. 下单后请按客服指引提供账号信息。\n3. 对服务不满意请联系客服处理。\n4. 谨防私下交易与诈骗。\n5. 俱乐部提供陪玩服务，不做兜底承诺。",
         ];
     }
 

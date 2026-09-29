@@ -4,6 +4,19 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/Database.php';
 
+/** 生成站点绝对 URL（分享卡片用） */
+function absoluteUrl(string $path = '/'): string
+{
+    if (preg_match('#^https?://#i', $path)) {
+        return $path;
+    }
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((string) ($_SERVER['SERVER_PORT'] ?? '') === '443')
+        || (strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+    $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    return ($https ? 'https' : 'http') . '://' . $host . '/' . ltrim($path, '/');
+}
+
 function e(?string $value): string
 {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');

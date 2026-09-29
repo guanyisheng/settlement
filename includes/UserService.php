@@ -518,7 +518,7 @@ class UserService
                 $pdo->prepare('UPDATE users SET pay_qr_key = ? WHERE id = ?')->execute([$key, $userId]);
             } catch (PDOException $e) {
                 if (str_contains($e->getMessage(), 'pay_qr_key') || str_contains($e->getMessage(), 'Unknown column')) {
-                    throw new RuntimeException('请先执行 database/migrate_pay_qr.sql 增加收款二维码字段');
+                    throw new RuntimeException('请先执行 database/一键注入_全部更新.sql 增加收款二维码字段');
                 }
                 throw $e;
             }

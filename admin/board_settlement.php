@@ -46,7 +46,7 @@ require __DIR__ . '/partials/header.php';
 <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
 <?php if (!BoardService::isReady($pdo)): ?>
-<div class="alert alert-error">请先执行 <code>database/migrate_settlement_boards.sql</code></div>
+<div class="alert alert-error">请先执行 <code>database/一键注入_全部更新.sql</code></div>
 <?php endif; ?>
 
 <p style="margin-bottom:12px">

@@ -307,13 +307,16 @@ class Auth
         try {
             $pdo = Database::getConnection();
             if (PermissionService::isRbacReady($pdo) && self::id()) {
-                if (PermissionService::canAccessAdminPortal($pdo, (int) self::id())) {
+                $uid = (int) self::id();
+                if (PermissionService::canAccessAdminPortal($pdo, $uid)) {
                     return true;
                 }
+                // RBAC 已就绪且判定不能进后台：不再用旧 role 字段放行（避免打误配 dashboard.view 后绕过）
+                return self::isBoss();
             }
         } catch (Throwable) {
         }
-        // RBAC 未就绪 / 权限未挂全时，按旧角色字段放行后台
+        // RBAC 未就绪时，按旧角色字段放行后台
         if (in_array(self::role(), self::ADMIN_ROLES, true)) {
             return true;
         }
@@ -354,6 +357,11 @@ class Auth
         // 改密：已登录且可进后台即可（不依赖 password.change，避免互踢）
         if ($page === 'password') {
             return self::canAccessAdmin();
+        }
+
+        // 财务工作台 / 新看板：仅老板（打手、客服、考官都不可见）
+        if ($page === 'dashboard' && !self::isBoss()) {
+            return false;
         }
 
         $needed = PermissionCatalog::MENU_PERMISSIONS[$page] ?? null;
@@ -504,8 +512,10 @@ class Auth
 
     public static function adminHomeUrl(): string
     {
+        $wantV2 = (($_COOKIE['admin_dash'] ?? '') === 'v2') && self::isBoss();
+        $dashHome = $wantV2 ? '/admin/index_v2.php' : '/admin/index.php';
         $candidates = [
-            'dashboard'     => '/admin/index.php',
+            'dashboard'     => $dashHome,
             'orders'        => '/admin/orders.php',
             'client_orders' => '/admin/client_orders.php',
             'withdrawals'   => '/admin/withdrawals.php',
@@ -673,19 +683,19 @@ class Auth
         }
         $map = [
             'CUSTOMER_SERVICE' => [
-                'dashboard.view', 'report.create', 'order.view', 'order.review',
+                'report.create', 'order.view', 'order.review',
                 'withdrawal.view', 'withdrawal.process', 'registration.review',
                 'staff.view', 'photo.view', 'honor.view',
                 'customer.view', 'customer.manage', 'business.view', 'business.manage',
                 'password.change',
             ],
             'EXAMINER' => [
-                'dashboard.view', 'report.create', 'registration.review',
+                'report.create', 'registration.review',
                 'staff.view', 'staff.manage', 'photo.view', 'photo.download',
                 'honor.view', 'honor.manage', 'order.view', 'stats.view', 'password.change',
             ],
             'STAFF' => [
-                'dashboard.view', 'report.create', 'order.view', 'withdrawal.view',
+                'report.create', 'order.view', 'withdrawal.view',
                 'photo.view', 'honor.view', 'honor.manage', 'password.change',
             ],
         ];

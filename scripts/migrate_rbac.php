@@ -3,17 +3,17 @@
 declare(strict_types=1);
 
 /**
- * 执行 RBAC 等增量迁移（可重复尝试；已存在的表/列会跳过报错）
+ * 执行 database/一键注入_全部更新.sql（可重复；已存在的表/列会跳过）
  * 用法：php scripts/migrate_rbac.php
  */
 
 require_once __DIR__ . '/../includes/Database.php';
 
 $pdo = Database::getConnection();
-$sqlFile = __DIR__ . '/../database/migrate_rbac_v2.sql';
+$sqlFile = __DIR__ . '/../database/一键注入_全部更新.sql';
 $raw = file_get_contents($sqlFile);
 if ($raw === false) {
-    fwrite(STDERR, "找不到 migrate_rbac_v2.sql\n");
+    fwrite(STDERR, "找不到 database/一键注入_全部更新.sql\n");
     exit(1);
 }
 

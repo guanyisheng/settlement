@@ -38,6 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'cos_bucket'        => trim($_POST['cos_bucket'] ?? ''),
                 'cos_prefix_orders' => trim($_POST['cos_prefix_orders'] ?? ''),
                 'cos_prefix_staff'  => trim($_POST['cos_prefix_staff'] ?? ''),
+                'customer_service_link' => trim($_POST['customer_service_link'] ?? ''),
+                'customer_banner_title' => trim($_POST['customer_banner_title'] ?? ''),
+                'customer_banner_desc'  => trim($_POST['customer_banner_desc'] ?? ''),
+                'customer_order_rules'   => (string) ($_POST['customer_order_rules'] ?? ''),
             ];
             if ($pairs['brand_name'] === '') {
                 throw new InvalidArgumentException('站点名称不能为空');
@@ -95,6 +99,34 @@ require __DIR__ . '/partials/header.php';
                     <input type="text" name="app_version" class="form-control" value="<?= e($s['app_version'] ?? '3.0.0-beta') ?>" placeholder="如 3.0.0-beta">
                     <p style="font-size:12px;color:var(--text-muted);margin-top:6px">显示在后台页脚，方便告知用户当前版本</p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h2>顾客端（约单 App）</h2></div>
+        <div class="card-body">
+            <div class="form-group">
+                <label>客服链接（微信客服 / QQ / 企业微信等）</label>
+                <input type="text" name="customer_service_link" class="form-control"
+                       value="<?= e($s['customer_service_link'] ?? '') ?>"
+                       placeholder="https://... 或微信客服链接">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>首页 Banner 标题</label>
+                    <input type="text" name="customer_banner_title" class="form-control"
+                           value="<?= e($s['customer_banner_title'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label>首页 Banner 副标题</label>
+                    <input type="text" name="customer_banner_desc" class="form-control"
+                           value="<?= e($s['customer_banner_desc'] ?? '') ?>">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>陪单详情 · 下单须知（每行一条）</label>
+                <textarea name="customer_order_rules" class="form-control" rows="5"><?= e($s['customer_order_rules'] ?? '') ?></textarea>
             </div>
         </div>
     </div>
